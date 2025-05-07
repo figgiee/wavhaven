@@ -1,0 +1,125 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+playwright-report/
+test-results/
+tests-e2e/fixtures/
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Added by Claude Task Master
+# Logs
+logs
+*.log
+dev-debug.log
+# Dependency directories
+# node_modules/
+# Environment variables
+# .env
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# OS specific
+# Task files
+tasks.json
+tasks/
+
+# Cursor IDE
+.cursor/
+
+# Repomix
+.repomix/
+
+# Test Reports
+# playwright-report/
+# test-results/
+
+# Supabase Temp
+supabase/.temp/
+
+# Backups and Large Files
+storage_backup_wavhaven_tracks/
+wavhaven_backup_*.backup
+*.backup
+users.zip
+
+# Data / User Uploads (Verify if these should be tracked)
+# public/coverart/
+
+# Templates / Temp / Notes
+react-email-starter/
+refactoring/
+migrationstuff.md
+repomix-output.txt.md
+page-fixed.tsx
+
+# Generated Reports
+scripts/task-complexity-report.json
+
+# Other config/notes
+.windsurfrules
+ux-ui-refining.md
+wavhaven-tech-spec.md
+
+# Explicitly ignore common large media files and archives
+# These might catch files not in specific directories listed above
+*.mp3
+*.wav
+*.aac
+*.ogg
+*.flac
+*.m4a
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Potentially sensitive scripts
+# scripts/scripts/migrate-data.js # Contains hardcoded DB URL 

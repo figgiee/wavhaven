@@ -1,0 +1,9 @@
+{
+  "projectName": "wavhaven",
+  "projectDescription": "A web-based marketplace for digital audio assets.",
+  "projectVersion": "0.1.0",
+  "authorName": "",
+  "tasksDir": "tasks",
+  "tasksFile": "tasks.json",
+  "configFile": "taskmaster.config.json"
+} 
