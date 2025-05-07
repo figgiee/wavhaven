@@ -123,3 +123,12 @@ wavhaven-tech-spec.md
 
 # Potentially sensitive scripts
 # scripts/scripts/migrate-data.js # Contains hardcoded DB URL 
+
+# Restored local files/folders, not for repo
+.cursorignore
+.taskmasterconfig
+.roomodes
+eslint.config.mjs
+taskmaster.config.json
+.roo/
+public/coverart/ 
