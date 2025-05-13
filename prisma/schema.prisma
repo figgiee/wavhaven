@@ -32,11 +32,11 @@ model SellerProfile {
   id                    String     @id @default(uuid())
   userId                String     @unique
   bio                   String?
-  websiteUrl            String?
+  websiteUrl            String? @db.VarChar(2500)
   twitterHandle         String?
   instagramHandle       String?
-  soundCloudUrl         String?
-  bannerImageUrl        String?
+  soundCloudUrl         String? @db.VarChar(2500)
+  bannerImageUrl        String? @db.VarChar(2048)
   tier                  SellerTier @default(STANDARD)
   isVerified            Boolean    @default(false)
   stripeAccountId       String?    @unique
@@ -44,6 +44,11 @@ model SellerProfile {
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
   user                  User       @relation("UserSellerProfile", fields: [userId], references: [id], onDelete: Cascade)
+  // Social Links
+  twitterUrl            String? @db.VarChar(2500)
+  instagramUrl          String? @db.VarChar(2500)
+  youtubeUrl            String? @db.VarChar(2500)
+  tiktokUrl             String? @db.VarChar(2500)
 
   @@index([userId])
   @@index([stripeAccountId])

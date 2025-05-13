@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrackCard } from '@/components/track-card';
+import TrackCard from '@/components/track-card';
 // Import the type definition from the Server Action
 import type { SimilarTrackCardData } from '@/server-actions/trackActions';
 // import type { Beat as OriginalBeatCardBeat } from '@/components/track-card'; // Remove this import

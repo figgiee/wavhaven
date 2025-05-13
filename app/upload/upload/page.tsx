@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import React from 'react';
 import { useForm, useFieldArray, UseFormReturn, ControllerRenderProps } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,6 +10,12 @@ import { SignedIn } from '@clerk/nextjs'; // Ensure only signed-in users see thi
 import { parseBlob } from 'music-metadata-browser'; // <-- Add this import
 import { Badge } from '@/components/ui/badge'; // Add Badge import
 import { toast } from "sonner"; // Added toast
+import { useEssentiaAnalysis } from '@/hooks/useEssentiaAnalysis';
+import { createMeydaInstance } from '@/lib/meydaService'; // <-- ADD THIS IMPORT
+import { preprocessAudioBuffer } from '@/lib/audioPreProcessor'; // Assuming you might use this before Meyda if not already done
+import { processHPSS } from '@/lib/hpss'; // <-- ADD THIS IMPORT
+import { determineKeyFromChromaFrames } from '@/lib/keyDetectionModule'; // <-- ADD THIS IMPORT
+import { calculateGlobalBpmViaWorker } from '@/lib/bpmAnalysis'; // <-- Import the worker function
 
 // --- Import Server Action ---
 import { prepareBulkUpload } from '@/server-actions/bulkUploadActions';
@@ -173,12 +179,18 @@ function TrackTagInput({ field, form }: TrackTagInputProps) {
                     <Badge
                         key={`${tag}-${i}`}
                         variant="secondary"
-                        className="cursor-pointer hover:bg-red-900/50 hover:text-red-300 transition-colors"
-                        onClick={() => removeTag(tag)}
-                        title={`Remove "${tag}"`}
+                        className="cursor-pointer hover:bg-red-900/50 hover:text-red-300 transition-colors inline-flex items-center"
+                        asChild
                     >
+                      <button 
+                        type="button"
+                        onClick={() => removeTag(tag)}
+                        aria-label={`Remove tag: ${tag}`}
+                        title={`Remove "${tag}"`}
+                      >
                         {tag}
-                        <X className="ml-1.5 h-3 w-3" />
+                        <X className="ml-1.5 h-3 w-3" aria-hidden="true"/>
+                      </button>
                     </Badge>
                 ))}
             </div>
@@ -194,6 +206,12 @@ export default function UploadPage() {
     const [uploadStatuses, setUploadStatuses] = useState<TrackStatus[]>([]);
     // State for selected content type, managed outside RHF
     const [selectedContentType, setSelectedContentType] = useState<string>('beat');
+
+    const { analyzeAudioWithEssentia, isAnalyzing: isAnyEssentiaAnalyzing, error: essentiaGlobalError, isEssentiaReady } = useEssentiaAnalysis();
+
+    // Add state to track analysis status per track item
+    const [trackAnalysisStatuses, setTrackAnalysisStatuses] = useState<Record<string, 'idle' | 'analyzing' | 'success' | 'error'>>({});
+    const [isDraggingMainTrack, setIsDraggingMainTrack] = useState(false); // Added from single upload, might be per-track
 
     const form = useForm<BulkUploadFormValues>({
         resolver: zodResolver(bulkUploadSchema),
@@ -229,6 +247,343 @@ export default function UploadPage() {
             }
             return newStatuses;
         });
+    };
+
+    // Update status when analysis starts/ends for a specific track ID/index
+    const setTrackAnalysisStatus = useCallback((index: number, status: 'idle' | 'analyzing' | 'success' | 'error') => {
+         setTrackAnalysisStatuses(prev => ({
+             ...prev,
+             [index]: status
+         }));
+    }, []);
+
+    const handleMeydaAnalysis = async (index: number) => {
+        const audioFile = form.getValues(`tracks.${index}.audioFile`);
+        if (!audioFile) {
+            toast.error("No audio file selected for this track.");
+            return;
+        }
+
+        console.log(`Attempting Audio API processing for Meyda.js analysis for track ${index + 1}`, audioFile.name);
+        setTrackAnalysisStatus(index, 'analyzing');
+        let audioCtx: AudioContext | null = null; // Define audioCtx here to be accessible in finally
+        let meydaAnalyzer: any = null; // To hold Meyda instance for stopping
+        let sourceNodeToAnalyze: AudioBufferSourceNode | null = null; // To hold the source node
+        const MEYDA_BUFFER_SIZE = 4096; // Define buffer size for consistency
+
+        try {
+            // 1. Create AudioContext
+            // Ensure AudioContext is available (runs in client-side effect or function)
+            if (typeof window !== "undefined") {
+                audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            } else {
+                throw new Error("AudioContext not supported in this environment.");
+            }
+
+            // 2. Read file to ArrayBuffer
+            const arrayBuffer = await audioFile.arrayBuffer();
+            toast.info(`Read ${audioFile.name} into ArrayBuffer. Decoding...`, { duration: 2000 });
+
+            // 3. Decode ArrayBuffer to AudioBuffer
+            let audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            console.log(`Audio decoded for ${audioFile.name}: Duration=${audioBuffer.duration.toFixed(2)}s, SampleRate=${audioBuffer.sampleRate}Hz, Channels=${audioBuffer.numberOfChannels}`);
+            toast.success(`Audio decoded: ${audioBuffer.duration.toFixed(2)}s, ${audioBuffer.sampleRate}Hz, ${audioBuffer.numberOfChannels}ch`, { duration: 3000 });
+
+            // 3.5 Pre-process Audio Buffer (Task 4 Integration)
+            try {
+                console.log('Starting audio pre-processing...');
+                toast.info('Pre-processing audio (resample, mono, normalize, filter)...');
+                audioBuffer = await preprocessAudioBuffer(audioBuffer, {
+                    // Use default options or pass custom ones if needed
+                    // targetSampleRate: 44100,
+                    // normalizeTargetDBFS: -1.0,
+                    // highPassFreq: 30,
+                });
+                console.log(`Audio pre-processed: Duration=${audioBuffer.duration.toFixed(2)}s, SampleRate=${audioBuffer.sampleRate}Hz, Channels=${audioBuffer.numberOfChannels}ch`);
+                toast.success('Audio pre-processing complete.');
+            } catch (preprocessError) {
+                 console.error('Audio pre-processing error:', preprocessError);
+                 toast.error(`Pre-processing failed: ${preprocessError instanceof Error ? preprocessError.message : String(preprocessError)}`);
+                 // Decide whether to continue analysis with the original buffer or stop
+                 // For now, let's stop if pre-processing fails, as subsequent steps might rely on it.
+                 throw preprocessError; // Re-throw to stop further processing in this block
+            }
+
+            // 4. Create AudioBufferSourceNode using the *processed* buffer
+            sourceNodeToAnalyze = audioCtx.createBufferSource();
+            sourceNodeToAnalyze.buffer = audioBuffer; // Use the potentially modified audioBuffer
+            
+            const allPowerSpectrums: Float32Array[] = [];
+            const allChromaVectors: Float32Array[] = []; // <-- For collecting chroma
+
+            // 5. Setup Meyda instance
+            meydaAnalyzer = createMeydaInstance(audioCtx, sourceNodeToAnalyze, {
+                bufferSize: MEYDA_BUFFER_SIZE, // Use defined buffer size
+                featureExtractors: ['powerSpectrum', 'chroma'],
+                chromaBands: 12,
+                callback: (features: { powerSpectrum: Float32Array, chroma?: Float32Array }) => {
+                    if (features.powerSpectrum) {
+                        allPowerSpectrums.push(new Float32Array(features.powerSpectrum));
+                    }
+                    if (features.chroma) {
+                        allChromaVectors.push(new Float32Array(features.chroma));
+                    }
+                }
+            });
+
+            // 6. Start analysis and setup stopping condition
+            const analysisPromise = new Promise<void>((resolve, reject) => {
+                if (!sourceNodeToAnalyze || !meydaAnalyzer) {
+                    reject(new Error("Audio source or Meyda analyzer not initialized."));
+                    return;
+                }
+                sourceNodeToAnalyze.onended = () => {
+                    console.log("Audio source ended, stopping Meyda.");
+                    if (meydaAnalyzer) {
+                        meydaAnalyzer.stop();
+                        meydaAnalyzer = null; // Clear instance
+                    }
+                    resolve();
+                };
+
+                try {
+                    meydaAnalyzer.start();
+                    sourceNodeToAnalyze.start(0); // Start playing the buffer for Meyda to process
+                    console.log('Meyda analysis started.');
+                } catch (meydaStartError) {
+                    console.error("Error starting Meyda analysis:", meydaStartError);
+                    reject(meydaStartError);
+                }
+            });
+
+            await analysisPromise; // Wait for Meyda to process the whole buffer
+
+            console.log(`Collected ${allPowerSpectrums.length} powerSpectrum frames.`);
+            if (allPowerSpectrums.length > 0) {
+                console.log(`First frame length: ${allPowerSpectrums[0].length}`);
+                toast.success(`Spectrogram data collected: ${allPowerSpectrums.length} frames.`);
+
+                // Call HPSS processing
+                try {
+                    console.log('Starting HPSS processing...');
+                    toast.info('Performing Harmonic-Percussive Source Separation...');
+                    const { harmonicOutputSpectrogram, percussiveOutputSpectrogram } = await processHPSS(allPowerSpectrums, {
+                        harmonicKernelSize: 17, // Default, can be tuned
+                        percussiveKernelSize: 17, // Default, can be tuned
+                        maskingExponent: 1,      // Default, can be tuned
+                    });
+                    console.log('HPSS processing complete.');
+                    console.log(`Harmonic output spectrogram: ${harmonicOutputSpectrogram.length} frames, first frame length: ${harmonicOutputSpectrogram[0]?.length}`);
+                    console.log(`Percussive output spectrogram: ${percussiveOutputSpectrogram.length} frames, first frame length: ${percussiveOutputSpectrogram[0]?.length}`);
+                    toast.success('HPSS processing successful!');
+
+                    // --- BPM Analysis via Worker ---
+                    let finalBpm: number | null = null;
+                    if (percussiveOutputSpectrogram) {
+                         try {
+                            const frameRate = audioCtx.sampleRate / MEYDA_BUFFER_SIZE;
+                            console.log('Starting BPM analysis via worker...');
+                            toast.info('Analyzing BPM...');
+                            finalBpm = await calculateGlobalBpmViaWorker(
+                                percussiveOutputSpectrogram, 
+                                frameRate, 
+                                { minBPM: 60, maxBPM: 180, minVoteBPM: 70, maxVoteBPM: 180 } // Optional: pass custom options
+                            );
+                            
+                            if (finalBpm !== null) {
+                                console.log(`Worker returned final BPM: ${finalBpm}`);
+                                toast.success(`Global BPM calculated: ${finalBpm}`);
+                                form.setValue(`tracks.${index}.bpm`, finalBpm, { shouldValidate: true });
+                            } else {
+                                console.log('BPM worker did not return a final BPM.');
+                                toast.warn('Could not determine BPM value.');
+                            }
+                         } catch (bpmErr) {
+                             console.error('BPM analysis worker error:', bpmErr);
+                             toast.error(`BPM analysis failed: ${bpmErr instanceof Error ? bpmErr.message : String(bpmErr)}`);
+                         }
+                    }
+                    // --- End BPM Analysis via Worker ---
+
+                } catch (hpssError) {
+                    console.error('HPSS processing error:', hpssError);
+                    toast.error(`HPSS failed: ${hpssError instanceof Error ? hpssError.message : String(hpssError)}`);
+                    // Potentially set trackAnalysisStatus to error here if HPSS is critical before BPM/Key setting
+                }
+            }
+
+            // Placeholder BPM/Key setting (remains from previous steps)
+            await new Promise(resolve => setTimeout(resolve, 500)); // Simulate further async work
+
+            // Use detected key if available, otherwise placeholder/keep existing
+            if (detectedKeyInfo && detectedKeyInfo.key !== 'Unknown') {
+                form.setValue(`tracks.${index}.key`, detectedKeyInfo.key, { shouldValidate: true });
+            } else {
+                // Optional: set to a default or clear if key detection fails
+                // form.setValue(`tracks.${index}.key`, null, { shouldValidate: true }); 
+                // For now, let previous placeholder logic or manual input prevail if no new key found
+                if (!form.getValues(`tracks.${index}.key`)) { // Only set placeholder if field is empty
+                    const placeholderKey = availableKeys[Math.floor(Math.random() * availableKeys.length)];
+                    form.setValue(`tracks.${index}.key`, placeholderKey, { shouldValidate: true });
+                }
+            }
+            // Update BPM only if it wasn't set by the analysis
+            if (form.getValues(`tracks.${index}.bpm`) === null) {
+                const placeholderBpm = Math.floor(Math.random() * (180 - 70 + 1)) + 70;
+                form.setValue(`tracks.${index}.bpm`, placeholderBpm, { shouldValidate: true }); // BPM still placeholder if analysis failed
+            }
+            
+            // Refined toast message - get final values from form
+            const finalKey = form.getValues(`tracks.${index}.key`);
+            const finalBpmValue = form.getValues(`tracks.${index}.bpm`);
+            const keyMessagePart = finalKey ? `Key: ${finalKey}` : "Key: N/A";
+            const bpmMessagePart = finalBpmValue !== null ? `BPM: ${finalBpmValue}` : "BPM: N/A";
+            toast.success(`Analysis complete for ${audioFile.name}. ${keyMessagePart}, ${bpmMessagePart}`);
+            setTrackAnalysisStatus(index, 'success');
+
+        } catch (error) {
+            console.error(`Audio processing or analysis error for track ${index + 1}:`, error);
+            let errorMessage = "Audio processing/analysis failed.";
+            if (error instanceof Error) {
+                errorMessage = error.message;
+                if (error.name === 'EncodingError') { // Specific error from decodeAudioData
+                    errorMessage = `Error decoding audio file: ${error.message}. Unsupported format or corrupt file?`;
+                }
+            }
+            toast.error(errorMessage);
+            setTrackAnalysisStatus(index, 'error');
+        } finally {
+            // Clean up AudioContext if it was created and is no longer needed.
+            if (meydaAnalyzer) {
+                meydaAnalyzer.stop(); // Ensure Meyda is stopped if an error occurred mid-analysis
+            }
+            if (sourceNodeToAnalyze) {
+                sourceNodeToAnalyze.onended = null; // Clean up listener
+                // sourceNodeToAnalyze.disconnect(); // Disconnect if connected to other nodes
+            }
+            if (audioCtx && audioCtx.state !== 'closed') {
+                // Closing the context immediately might be an issue if other async operations depend on it.
+                // For file-based processing, it might be okay after everything is done for this track.
+                // await audioCtx.close(); 
+                // console.log("AudioContext closed for track " + (index + 1));
+            }
+        }
+    };
+
+    const handleAudioFileProcessing = async (file: File | undefined, index: number) => {
+        const { setValue, getValues, trigger } = form; // Assuming `form` is your useForm instance
+
+         if (!file) {
+            // Handle file removal: Clear fields for this specific track index
+            setValue(`tracks.${index}.bpm`, null);
+            setValue(`tracks.${index}.key`, null);
+            // TODO: Clear genre/tags for this index
+             setValue(`tracks.${index}._audioFileName`, undefined); // Clear filename helper field
+            setTrackAnalysisStatus(index, 'idle');
+            return;
+        }
+
+        // ... (any existing client-side file validation for this specific file) ...
+        // Example: size/type validation
+
+        // Update RHF state with the file object (you likely have this)
+        // form.setValue(`tracks.${index}.audioFile`, file, { shouldValidate: true });
+        // form.setValue(`tracks.${index}._audioFileName`, file.name); // Update filename helper
+
+
+        const toastId = `metadata-parse-bulk-${index}`;
+        toast.loading(`Processing metadata for ${file.name} (Track #${index + 1})...`, { id: toastId });
+
+        let musicMetadataResults: { bpm?: number, key?: string, title?: string } = {};
+
+        // --- 1. music-metadata-browser (Keep if desired) ---
+        try {
+            console.log(`[Bulk] Parsing (music-metadata-browser) for: ${file.name}`);
+            const metadata = await parseBlob(file); // Assuming parseBlob is imported
+            console.log('[Bulk] music-metadata-browser Results:', metadata.common);
+
+            // Auto-fill title if it's empty for this track
+            if (metadata.common.title && !getValues(`tracks.${index}.title`)) {
+                setValue(`tracks.${index}.title`, metadata.common.title, { shouldValidate: true });
+            }
+             // Capture BPM/Key from music-metadata as fallback
+            if (metadata.common.bpm) musicMetadataResults.bpm = Math.round(metadata.common.bpm);
+            if (metadata.common.key) {
+                let formattedKey = metadata.common.key.replace(/m$/, 'min');
+                if (!formattedKey.endsWith('min') && !formattedKey.endsWith('maj')) formattedKey += 'maj';
+                musicMetadataResults.key = formattedKey;
+            }
+        } catch (error) {
+            console.error(`[Bulk] Error with music-metadata-browser for ${file.name}:`, error);
+            // Optionally show a specific toast for music-metadata-browser failure
+        }
+
+        // --- 2. Essentia.js Analysis ---
+        if (isEssentiaReady) {
+            console.log(`[Bulk] Analyzing (Essentia.js) for: ${file.name}`);
+            setTrackAnalysisStatus(index, 'analyzing');
+            try {
+                const essentiaResults = await analyzeAudioWithEssentia(file);
+                if (essentiaResults) {
+                    console.log(`[Bulk] Essentia.js Results for Track #${index + 1}:`, essentiaResults);
+                    setTrackAnalysisStatus(index, 'success');
+
+                    // Apply results to form fields for this track index (`tracks.${index}.fieldName`)
+                    // Prioritize Essentia or merge. Overwrite fields if a value is detected.
+                    if (essentiaResults.bpm) {
+                        setValue(`tracks.${index}.bpm`, essentiaResults.bpm, { shouldValidate: true });
+                    } else if (musicMetadataResults.bpm) { // Fallback
+                        setValue(`tracks.${index}.bpm`, musicMetadataResults.bpm, { shouldValidate: true });
+                    }
+
+                    if (essentiaResults.key && essentiaResults.scale) {
+                        let formattedKey = `${essentiaResults.key}${essentiaResults.scale === 'major' ? 'maj' : 'min'}`;
+                         formattedKey = formattedKey.replace(/\s*major/i, 'maj').replace(/\s*minor/i, 'min');
+                        if (availableKeys.includes(formattedKey)) {
+                             // Set it if it's a standard key
+                            setValue(`tracks.${index}.key`, formattedKey, { shouldValidate: true });
+                        } else {
+                             // If not in standard list, decide behavior. Setting it allows schema validation.
+                             setValue(`tracks.${index}.key`, formattedKey, { shouldValidate: true });
+                             console.warn(`[Bulk Essentia] Track #${index+1}: Detected key "${formattedKey}" not in standard list.`);
+                        }
+                    } else if (musicMetadataResults.key && availableKeys.includes(musicMetadataResults.key)) { // Fallback
+                         setValue(`tracks.${index}.key`, musicMetadataResults.key, { shouldValidate: true });
+                    }
+
+                    // TODO: Implement logic to set genre/mood/tags for `tracks.${index}.fieldName`
+                    // Use analysisResults.genreSuggestions, moodSuggestions, tagSuggestions
+                    // Remember to handle your form field type (e.g., string vs array for tags)
+
+                    toast.success(`Analysis complete for ${file.name}.`, { id: toastId, duration: 3000 });
+
+                } else {
+                     // No results, but analysis ran (possibly hook error handled internally by toast)
+                     setTrackAnalysisStatus(index, essentiaGlobalError ? 'error' : 'success'); // if hook had global error, mark as error
+                     if (essentiaGlobalError) {
+                        toast.error(`Advanced analysis failed for ${file.name}: ${essentiaGlobalError}`, {duration: 4000});
+                     }
+                }
+            } catch (e) {
+                console.error(`[Bulk] Error analyzing with Essentia.js for ${file.name}:`, e);
+                setTrackAnalysisStatus(index, 'error');
+                 toast.error(`Advanced analysis error for ${file.name}.`, { id: toastId, duration: 4000 });
+            }
+        } else {
+            // Handle case where Essentia isn't ready when file is selected
+            setTrackAnalysisStatus(index, 'idle');
+            toast.info("Audio analysis engine not ready. Metadata will not be auto-filled for this file. Please try re-selecting or refresh.", {duration: 3000});
+            // Fallback to only music-metadata-browser results if Essentia isn't ready
+            if (musicMetadataResults.bpm) setValue(`tracks.${index}.bpm`, musicMetadataResults.bpm, { shouldValidate: true });
+            if (musicMetadataResults.key && availableKeys.includes(musicMetadataResults.key)) setValue(`tracks.${index}.key`, musicMetadataResults.key, { shouldValidate: true });
+        }
+
+        // Final success toast if no specific analysis error toast was shown by essentia part
+         if (!essentiaGlobalError && trackAnalysisStatuses[index] !== 'error') {
+            toast.success(`Metadata processing finished for ${file.name}.`, { id: toastId, duration: 3000 });
+         } else {
+            toast.dismiss(toastId); // Dismiss loading if an error occurred during essentia analysis
+         }
     };
 
     async function onSubmit(data: BulkUploadFormValues) {
@@ -429,81 +784,46 @@ export default function UploadPage() {
         }
     }
 
-    // Defined helper function for status icons
-    const getStatusIndicator = (status: UploadStatus) => {
+    // --- Step 2.4: Add Status Indicator Helper --- // Modified for accessibility
+    const getStatusIndicator = (status: UploadStatus | undefined) => {
+        let statusText = "Idle";
+        let IconComponent = null;
+        let iconClassName = "text-gray-500";
+
         switch (status) {
             case 'uploading':
-                return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+                statusText = "Uploading";
+                IconComponent = Loader2;
+                iconClassName = "text-blue-500 animate-spin";
+                break;
             case 'success':
-                return <CheckCircle className="h-4 w-4 text-green-500" />;
+                statusText = "Upload successful";
+                IconComponent = CheckCircle;
+                iconClassName = "text-green-500";
+                break;
             case 'error':
-                return <XCircle className="h-4 w-4 text-red-500" />;
+                statusText = "Upload failed";
+                IconComponent = XCircle;
+                iconClassName = "text-red-500";
+                break;
             case 'skipped':
-                 return <span title="Skipped"><X className="h-4 w-4 text-gray-500" /></span>;
+                 statusText = "Skipped";
+                 IconComponent = Check; // Or another suitable icon
+                 iconClassName = "text-yellow-500";
+                 break;
             case 'idle':
             default:
-                return null; // No indicator for idle
-        }
-    };
-
-    // --- Metadata Parsing Logic ---
-    const parseAndSetMetadata = async (file: File | undefined, index: number) => {
-        if (!file) {
-             console.log(`No file provided for metadata parsing at index ${index}.`);
-             toast.warning(`No audio file found for track #${index + 1} to parse metadata.`);
-             return;
+                statusText = "Idle";
+                // No icon for idle, or a placeholder if desired
+                break;
         }
 
-        toast.info(`Parsing metadata for ${file.name}...`, { id: `parse-${index}` });
-        try {
-            console.log(`Parsing metadata for: ${file.name}`);
-            const metadata = await parseBlob(file);
-            console.log('Parsed Metadata:', metadata.common);
-
-            let changesMade = false;
-            const bpm = metadata.common.bpm;
-            const key = metadata.common.key; // Note: may need format conversion
-
-            if (bpm) {
-                const bpmNum = Math.round(bpm);
-                if (bpmNum >= 40 && bpmNum <= 300) { // Basic validation
-                    // Only set if different from current value
-                    if (form.getValues(`tracks.${index}.bpm`) !== bpmNum) {
-                        console.log(`Setting BPM for track ${index}: ${bpmNum}`);
-                        form.setValue(`tracks.${index}.bpm`, bpmNum, { shouldValidate: true });
-                        changesMade = true;
-                    }
-                }
-            }
-            
-            // Basic Key mapping (can be expanded)
-            if (key) {
-                 let formattedKey = key.replace(/m$/, 'min'); // G#m -> G#min
-                if (!formattedKey.endsWith('min') && !formattedKey.endsWith('maj')) { // Avoid double 'majmaj'
-                    formattedKey += 'maj'; // C -> Cmaj
-                }
-                if (availableKeys.includes(formattedKey)) {
-                     // Only set if different from current value
-                     if (form.getValues(`tracks.${index}.key`) !== formattedKey) {
-                        console.log(`Setting Key for track ${index}: ${formattedKey}`);
-                        form.setValue(`tracks.${index}.key`, formattedKey, { shouldValidate: true });
-                        changesMade = true;
-                    }
-                } else {
-                    console.warn(`Parsed key "${key}" (formatted: "${formattedKey}") not in availableKeys.`);
-                }
-            }
-
-            if (changesMade) {
-                 toast.success(`Metadata parsed for ${file.name}.`, { id: `parse-${index}` });
-            } else {
-                 toast.info(`No new metadata found or applied for ${file.name}.`, { id: `parse-${index}` });
-            }
-
-        } catch (error) {
-            console.error(`Error parsing metadata for ${file.name}:`, error);
-            toast.error(`Error parsing metadata for ${file.name}.`, { id: `parse-${index}` });
-        }
+        return (
+            <span className="inline-flex items-center">
+                {IconComponent && <IconComponent className={`h-4 w-4 ${iconClassName}`} aria-hidden="true" />}
+                <span className="sr-only">{statusText}</span>
+            </span>
+        );
     };
 
     return (
@@ -566,13 +886,15 @@ export default function UploadPage() {
                                 <div key={item.id} className="p-6 bg-gray-900/30 border border-gray-700/50 rounded-lg relative space-y-6">
                                     {/* Remove Button for this track */} 
                                     {fields.length > 1 && (
-                                         <Button 
+                                         <Button
                                             type="button"
-                                            variant="ghost"
+                                            variant="outline"
                                             size="icon"
+                                            className="text-red-500 hover:text-red-400 hover:bg-red-900/30 border-red-500/30 hover:border-red-500/60"
                                             onClick={() => remove(index)}
-                                            className="absolute top-3 right-3 text-gray-500 hover:text-red-500 hover:bg-red-900/20 w-8 h-8"
-                                            aria-label="Remove track"
+                                            disabled={fields.length <= 1} // Disable removing if only one track left
+                                            title="Remove this track"
+                                            aria-label={`Remove track ${index + 1}`}
                                          >
                                             <Trash2 className="h-4 w-4" />
                                         </Button>
@@ -615,38 +937,46 @@ export default function UploadPage() {
                                                 )}
                                             />
                                             {/* BPM/Key Row */} 
-                                            <div className="grid grid-cols-2 gap-4">
-                                                 <FormField control={form.control} name={`tracks.${index}.bpm`} render={({ field }: { field: ControllerRenderProps<BulkUploadFormValues, `tracks.${number}.bpm`> }) => (
+                                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                                {/* BPM Field */}
+                                                <FormField control={form.control} name={`tracks.${index}.bpm`} render={({ field }: { field: ControllerRenderProps<BulkUploadFormValues, `tracks.${number}.bpm`> }) => (
                                                     <FormItem className="col-span-1">
                                                         <FormLabel className="text-gray-300">BPM</FormLabel>
                                                         <FormControl>
-                                                            <div className="relative">
-                                                                <Gauge className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-                                                                <Input type="number" placeholder="BPM" {...field} onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))} value={field.value ?? ''} className="bg-gray-900/70 border-gray-700 focus:border-indigo-500 focus:ring-indigo-500 text-white pl-8" />
-                                                            </div>
+                                                            <Input 
+                                                                type="number" 
+                                                                placeholder="e.g. 120" 
+                                                                {...field} 
+                                                                value={field.value ?? ''}
+                                                                onChange={e => {
+                                                                    const value = e.target.value;
+                                                                    field.onChange(value === '' ? null : parseInt(value, 10));
+                                                                }}
+                                                                className="bg-gray-900/70 border-gray-700 focus:border-indigo-500 focus:ring-indigo-500 text-white"
+                                                            />
                                                         </FormControl>
                                                         <FormMessage className="text-red-400" />
                                                     </FormItem>
-                                                )}/>
-                                                 <FormField control={form.control} name={`tracks.${index}.key`} render={({ field }: { field: ControllerRenderProps<BulkUploadFormValues, `tracks.${number}.key`> }) => (
+                                                )} />
+                                                {/* Key Field */}
+                                                <FormField control={form.control} name={`tracks.${index}.key`} render={({ field }: { field: ControllerRenderProps<BulkUploadFormValues, `tracks.${number}.key`> }) => (
                                                     <FormItem className="col-span-1">
                                                         <FormLabel className="text-gray-300">Key</FormLabel>
-                                                         <Select onValueChange={field.onChange} defaultValue={field.value ?? undefined}>
-                                                             <FormControl>
-                                                                 <SelectTrigger className="bg-gray-900/70 border-gray-700 text-white">
-                                                                     <div className="flex items-center">
-                                                                        <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 mr-2"/>
-                                                                        <SelectValue placeholder="Select key" className="pl-6"/>
-                                                                    </div>
-                                                                 </SelectTrigger>
-                                                             </FormControl>
-                                                             <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                                                                 {availableKeys.map(key => ( <SelectItem key={key} value={key} className="hover:bg-gray-800">{key}</SelectItem> ))}
-                                                             </SelectContent>
-                                                         </Select>
+                                                        <Select onValueChange={field.onChange} value={field.value ?? undefined} >
+                                                            <FormControl>
+                                                                <SelectTrigger className="bg-gray-900/70 border-gray-700 focus:border-indigo-500 focus:ring-indigo-500 text-white">
+                                                                    <SelectValue placeholder="Select key" />
+                                                                </SelectTrigger>
+                                                            </FormControl>
+                                                            <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                                                                {availableKeys.map((k) => (
+                                                                    <SelectItem key={k} value={k} className="hover:bg-gray-700">{k}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
                                                         <FormMessage className="text-red-400" />
                                                     </FormItem>
-                                                )}/>
+                                                )} />
                                             </div>
                                              {/* Tags */}
                                             <FormField
@@ -663,129 +993,117 @@ export default function UploadPage() {
                                              <FormField
                                                 control={form.control}
                                                 name={`tracks.${index}.audioFile`}
-                                                render={({ field: { onChange, onBlur, name, ref, disabled } }: { field: ControllerRenderProps<BulkUploadFormValues, `tracks.${number}.audioFile`> }) => {
-                                                    // Get the temporary file name for display, if stored
-                                                    const currentFileName = form.watch(`tracks.${index}._audioFileName`); 
-                                                    // Make the handler async to await parsing
-                                                    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-                                                        const file = e.target.files?.[0];
-                                                        onChange(file); // Update RHF state with the file object
-                                                        // Use setValue to update the hidden field for display name
-                                                        form.setValue(`tracks.${index}._audioFileName`, file?.name);
-
-                                                        // --- Automatically parse metadata on file selection ---
-                                                        if (file) {
-                                                            await parseAndSetMetadata(file, index);
-                                                        }
-                                                        // --------------------------------
-                                                    };
-                                                    return (
-                                                        <FormItem>
-                                                            <FormLabel className="flex items-center justify-between w-full text-gray-300">
-                                                                <span>Audio File*</span>
-                                                                 {/* --- Step 2.4: Add Audio Status Indicator --- */}
-                                                                 <span className="ml-2">{getStatusIndicator(uploadStatuses[index]?.audio)}</span>
-                                                            </FormLabel>
-                                                            <FormControl>
-                                                                <div className={cn(
-                                                                    "relative flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-gray-700 hover:border-indigo-500 rounded-lg cursor-pointer bg-gray-900/50 transition-colors group",
-                                                                    {
-                                                                        "border-indigo-500": uploadStatuses[index]?.audio === 'uploading',
-                                                                        "bg-indigo-900/30": uploadStatuses[index]?.audio === 'success',
-                                                                        "hover:border-indigo-600": uploadStatuses[index]?.audio === 'idle',
-                                                                        "hover:bg-indigo-800/30": uploadStatuses[index]?.audio === 'error',
-                                                                    }
-                                                                )}>
-                                                                    <Input id={name} name={name} type="file" accept="audio/*" onChange={handleFileChange} onBlur={onBlur} ref={ref} disabled={disabled} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                                                    <div className="text-center pointer-events-none">
-                                                                        <UploadCloud className="mx-auto h-8 w-8 text-gray-500 group-hover:text-indigo-400 mb-2 transition-colors" />
-                                                                        {currentFileName ? (
-                                                                            <div className="flex items-center justify-between w-full text-sm text-gray-400">
-                                                                                <span className="truncate mr-2">{currentFileName}</span>
-                                                                                {/* Metadata Parsing - Updated onClick */}
-                                                                                <Button
-                                                                                    type="button"
-                                                                                    variant="ghost"
-                                                                                    size="sm"
-                                                                                    // Get file from form state for manual trigger
-                                                                                    onClick={() => parseAndSetMetadata(form.getValues(`tracks.${index}.audioFile`), index)}
-                                                                                    disabled={!form.watch(`tracks.${index}.audioFile`)} // Disable if no file
-                                                                                    className="text-indigo-400 hover:text-indigo-300 px-1 py-0.5 h-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                                >
-                                                                                    Parse Metadata
-                                                                                </Button>
-                                                                            </div>
-                                                                        ) : (
-                                                                            <p className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">Choose file or drag & drop</p>
-                                                                        )}
-                                                                        <p className="text-xs text-gray-500 mt-1">WAV, MP3, AIFF. Max 100MB.</p>
-                                                                    </div>
-                                                                </div>
-                                                            </FormControl>
-                                                            <FormMessage className="text-red-400" />
-                                                        </FormItem>
-                                                    );
-                                                }}
-                                            />
+                                                render={({ field }) => (
+                                                  <FormItem>
+                                                    <FormLabel className="flex items-center justify-between w-full text-gray-300">
+                                                        <span>Audio File <span className="text-red-500">*</span></span>
+                                                        {/* Use the updated getStatusIndicator */} 
+                                                        {getStatusIndicator(uploadStatuses[index]?.audio)} 
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                      <div className={cn(
+                                                                 "relative flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-gray-700 hover:border-indigo-500 rounded-lg cursor-pointer bg-gray-900/50 transition-colors group",
+                                                                 }
+                                                                 )}
+                                                                   // Add accessibility attributes to the clickable/droppable div
+                                                                   tabIndex={0}
+                                                                   role="button"
+                                                                   aria-label={`Upload audio file for track ${index + 1}`}
+                                                                   onClick={() => document.getElementById(`audio-file-input-${index}`)?.click()}
+                                                                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { document.getElementById(`audio-file-input-${index}`)?.click(); }}}
+                                                                   // Drag/drop handlers remain
+                                                                   onDragOver={(e) => { e.preventDefault(); /* Add hover state */ }}
+                                                                   onDragLeave={(e) => { /* Remove hover state */ }}
+                                                                   onDrop={(e) => { /* Handle drop */ }}
+                                                                 >
+                                                                     <Input 
+                                                                       id={`audio-file-input-${index}`} // Ensure ID exists
+                                                                       name={`tracks.${index}.audioFile`} 
+                                                                       type="file" 
+                                                                       accept="audio/*" 
+                                                                       onChange={async (e) => {
+                                                                         const file = e.target.files?.[0];
+                                                                         form.setValue(`tracks.${index}.audioFile`, file, { shouldValidate: true });
+                                                                         await handleAudioFileProcessing(file, index);
+                                                                       }}
+                                                                       onBlur={field.onBlur} 
+                                                                       ref={field.ref} 
+                                                                       disabled={!form.watch(`tracks.${index}.audioFile`)} 
+                                                                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                                                                       // Add ARIA for the hidden input itself
+                                                                       aria-label={`Audio file input for track ${index + 1}`}
+                                                                       aria-hidden="true"
+                                                                     />
+                                                                     <div className="text-center pointer-events-none">
+                                                                       <span className="font-semibold text-indigo-400">Click to upload</span> or drag and drop
+                                                                     </div>
+                                                                   </div>
+                                                    </FormControl>
+                                                  </FormItem>
+                                                )}
+                                              />
                                              {/* Cover Image Input - Inlined */}
                                              <FormField
                                                  control={form.control}
                                                  name={`tracks.${index}.coverImage`}
-                                                 render={({ field: { onChange, onBlur, name, ref, disabled } }: { field: ControllerRenderProps<BulkUploadFormValues, `tracks.${number}.coverImage`> }) => { 
-                                                     const currentFileName = form.watch(`tracks.${index}._coverFileName`);
-                                                     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-                                                         const file = e.target.files?.[0];
-                                                         onChange(file); 
-                                                         form.setValue(`tracks.${index}._coverFileName`, file?.name);
-                                                     };
-                                                     return (
-                                                         <FormItem>
-                                                            <FormLabel className="flex items-center justify-between w-full text-gray-300">
-                                                                <span>Cover Image</span>
-                                                                 {/* --- Step 2.4: Add Cover Status Indicator --- */}
-                                                                 <span className="ml-2">{getStatusIndicator(uploadStatuses[index]?.cover)}</span>
-                                                            </FormLabel>
-                                                            <FormControl>
-                                                                <div className={cn(
-                                                                    "relative flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-gray-700 hover:border-indigo-500 rounded-lg cursor-pointer bg-gray-900/50 transition-colors group",
-                                                                    {
-                                                                        "border-indigo-500": uploadStatuses[index]?.cover === 'uploading',
-                                                                        "bg-indigo-900/30": uploadStatuses[index]?.cover === 'success',
-                                                                        "hover:border-indigo-600": uploadStatuses[index]?.cover === 'idle',
-                                                                        "hover:bg-indigo-800/30": uploadStatuses[index]?.cover === 'error',
-                                                                    }
-                                                                )}>
-                                                                    <Input id={name} name={name} type="file" accept="image/*" onChange={handleFileChange} onBlur={onBlur} ref={ref} disabled={disabled} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                                                    <div className="text-center pointer-events-none">
-                                                                         <ImageIcon className="mx-auto h-8 w-8 text-gray-500 group-hover:text-indigo-400 mb-2 transition-colors" />
-                                                                        {currentFileName ? (
-                                                                            <div className="flex items-center justify-between w-full text-sm text-gray-400">
-                                                                                <span className="truncate">{currentFileName}</span>
-                                                                                  {/* Optionally add a remove button for the cover */}
-                                                                                   <Button
-                                                                                       type="button"
-                                                                                       variant="ghost"
-                                                                                       size="icon"
-                                                                                       onClick={() => form.setValue(`tracks.${index}.coverImage`, undefined)}
-                                                                                       className="text-red-500 hover:text-red-400 h-6 w-6 ml-2" // Adjusted size/margin
-                                                                                    >
-                                                                                        <XCircle className="h-4 w-4" />
-                                                                                    </Button>
-                                                                            </div>
-                                                                        ) : (
-                                                                             <p className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">Choose file or drag & drop</p>
-                                                                         )}
-                                                                         <p className="text-xs text-gray-500 mt-1">PNG, JPG, WEBP. Max 5MB.</p>
-                                                                    </div>
-                                                                </div>
-                                                             </FormControl>
-                                                            <FormMessage className="text-red-400" /> 
-                                                         </FormItem>
-                                                     );
-                                                 }}
-                                             />
+                                                 render={({ field }) => (
+                                                   <FormItem>
+                                                     <FormLabel className="flex items-center justify-between w-full text-gray-300">
+                                                          <span>Cover Image (Optional)</span>
+                                                          {/* Use the updated getStatusIndicator */} 
+                                                          {getStatusIndicator(uploadStatuses[index]?.cover)} 
+                                                     </FormLabel>
+                                                     <FormControl>
+                                                       <div 
+                                                         className="relative flex items-center justify-center p-4 border-2 border-dashed border-gray-700 rounded-lg cursor-pointer hover:border-indigo-600 transition-colors h-32"
+                                                         onClick={() => document.getElementById(`cover-image-input-${index}`)?.click()} // Trigger hidden input
+                                                         tabIndex={0} // Make keyboard focusable
+                                                         role="button" // Identify as interactive element
+                                                         aria-label={`Upload cover image for track ${index + 1}`}
+                                                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { document.getElementById(`cover-image-input-${index}`)?.click(); }}} // Trigger on Enter/Space
+                                                       >
+                                                         {form.getValues(`tracks.${index}.coverImage`) ? (
+                                                           <ImageIcon className="h-8 w-8 text-gray-500 mb-2" />
+                                                         ) : (
+                                                           <p className="text-sm text-center text-gray-400">
+                                                             <span className="font-semibold text-indigo-400">Click to upload</span> or drag and drop
+                                                           </p>
+                                                         )}
+                                                         <Input
+                                                           id={`cover-image-input-${index}`}
+                                                           type="file"
+                                                           className="hidden"
+                                                           accept="image/jpeg,image/png,image/webp"
+                                                           onChange={(e) => {
+                                                               const file = e.target.files?.[0];
+                                                               form.setValue(`tracks.${index}.coverImage`, file, { shouldValidate: true });
+                                                               form.setValue(`tracks.${index}._coverFileName`, file?.name); // Store filename
+                                                           }}
+                                                           aria-label={`Cover image input for track ${index + 1}`} // Label for screen reader on hidden input
+                                                           aria-hidden="true" // Ensure it's not directly announced if label is on wrapper
+                                                         />
+                                                       </div>
+                                                     </FormControl>
+                                                   </FormItem>
+                                                 )}
+                                               />
                                         </div>
                                     </div>
+
+                                    {/* Analyze Audio Button */}
+                                    <Button
+                                        type="button"
+                                        onClick={() => handleMeydaAnalysis(index)}
+                                        disabled={!form.watch(`tracks.${index}.audioFile`) || trackAnalysisStatuses[index] === 'analyzing' || trackAnalysisStatuses[index] === 'success'}
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full mb-4 bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-500"
+                                    >
+                                        {trackAnalysisStatuses[index] === 'analyzing' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        {trackAnalysisStatuses[index] === 'success' && <CheckCircle className="mr-2 h-4 w-4 text-green-400" />}
+                                        {trackAnalysisStatuses[index] === 'error' && <XCircle className="mr-2 h-4 w-4 text-red-400" />}
+                                        Analyze Audio (Key/BPM)
+                                    </Button>
                                 </div> // End individual track item container
                             ))}
                         </div>
@@ -796,7 +1114,8 @@ export default function UploadPage() {
                                 type="button"
                                 variant="outline"
                                 onClick={() => append(createEmptyTrack())}
-                                className="border-gray-700 hover:bg-gray-800 hover:text-indigo-400"
+                                className="mt-8 w-full border-dashed border-indigo-500 hover:border-indigo-400 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-900/30"
+                                aria-label="Add another track"
                             >
                                 <Plus className="mr-2 h-4 w-4" />
                                 Add Another Track

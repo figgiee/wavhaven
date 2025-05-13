@@ -12,11 +12,16 @@
       "store/**",
       "supabase/**",
       "prisma/**",
+      "public/essentia/**",
+      "scripts/**",
       "next.config.*",
       "tailwind.config.ts",
       "tsconfig.json",
       "package.json",
-      "components.json"
+      "components.json",
+      "middleware.ts",
+      ".env.example",
+      "essentialog.txt"
     ],
     "ignore": {
       "useDefaultPatterns": false,
@@ -45,7 +50,6 @@
         "playwright-report/**",
         "wavhaven-docking/**",
         "react-email-starter/**",
-        "public/**",
         "*.log",
         "logs/**",
         ".idea/**",

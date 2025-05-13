@@ -2,10 +2,11 @@
 
 // Remove direct auth import, use clerkClient and verifyToken
 // import { auth } from '@clerk/nextjs/server'; 
-import { clerkClient, verifyToken } from '@clerk/backend'; // Use backend imports
+import { clerkClient, verifyToken } from '@clerk/nextjs/server'; // Use server imports
 import prisma from "@/lib/prisma";
 import { getInternalUserId } from '@/lib/userUtils';
 import type { TrackFile } from '@prisma/client';
+import { createSignedUrl } from '@/lib/storage'; // <-- Import createSignedUrl
 
 // Define the return type for the Server Action
 interface DownloadableItem {
@@ -92,7 +93,8 @@ async function getAndMapDownloads(userId: string): Promise<DownloadableItem[]> {
 
     console.log(`[Server Action] Found ${permissions.length} download permissions.`);
 
-    const downloads = permissions.map(p => {
+    // Use Promise.all to handle async URL generation within the map
+    const downloads = await Promise.all(permissions.map(async (p) => { // <-- Make map callback async
       const license = p.orderItem?.license;
       const allowedFileTypes = license?.filesIncluded || [];
       const availableFiles = p.track?.trackFiles || [];
@@ -112,18 +114,35 @@ async function getAndMapDownloads(userId: string): Promise<DownloadableItem[]> {
           };
         });
 
-      const coverUrl = null; 
+      // --- Generate Cover URL --- 
+      let coverUrl: string | null = null;
+      if (p.track?.coverImageFileId) {
+        try {
+          const coverFile = await prisma.trackFile.findUnique({
+            where: { id: p.track.coverImageFileId },
+            select: { storagePath: true },
+          });
+          if (coverFile?.storagePath) {
+            // Generate a URL for viewing (expires in 1 hour, no download disposition)
+            coverUrl = await createSignedUrl(coverFile.storagePath, 3600, false); 
+          }
+        } catch (urlError) {
+          console.error(`Error generating cover URL for track ${p.trackId}:`, urlError);
+          // Keep coverUrl as null if generation fails
+        }
+      }
+      // --- End Generate Cover URL ---
 
       return {
         orderId: p.orderId,
         trackId: p.trackId,
         licenseId: license?.id || 'unknown-license',
         trackTitle: p.track?.title || 'Unknown Track',
-        trackCoverUrl: coverUrl,
+        trackCoverUrl: coverUrl, // <-- Use generated URL
         licenseName: license?.name || 'Unknown License',
         trackFiles: downloadableFiles,
       };
-    });
+    })); // <-- Close Promise.all
 
     return downloads;
   } catch (error) {

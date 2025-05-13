@@ -1,98 +1,73 @@
 import { Suspense } from 'react';
-import { searchTracks, type TrackSearchResult } from "@/server-actions/trackActions";
-import { ExploreClientUI } from '@/components/explore/ExploreClientUI'; // Import the new client component
+import { searchTracks } from "@/server-actions/trackActions"; // Assuming this action accepts searchParams
+import { ExploreClientUI } from '@/components/explore/ExploreClientUI';
 import type { License } from '@/components/license/license.types'; // Keep type if needed for mapping
 import { Skeleton } from '@/components/ui/skeleton'; // Keep for SkeletonGrid
-import { ExploreLoadingSkeleton } from '@/components/explore/ExploreLoadingSkeleton'; // Ensure this component exists
+import React from 'react';
+import { Metadata } from 'next';
+import { Button } from '@/components/ui/button';
+import { ListFilter } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetClose // Import SheetClose for explicit closing if needed
+} from "@/components/ui/sheet";
+import { FilterSidebar, AppliedFilters } from '@/components/explore/FilterSidebar'; // Import the new sidebar
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'; // Import Breadcrumbs
+import type { Beat } from '@/types'; // Import the Beat type
+import { Container } from '@/components/layout/Container'; // Updated import path
 
 // --- Constants (Keep only if needed server-side, like ITEMS_PER_PAGE) ---
-const ITEMS_PER_PAGE = 9;
+// const ITEMS_PER_PAGE = 9; // Move to client if pagination logic moves there
+// const DEFAULT_BPM_RANGE: [number, number] = [60, 180]; // Move to client
+// const DEFAULT_PRICE_RANGE: [number, number] = [0, 200]; // Move to client
 
 // --- Types (Keep only if needed server-side for mapping) ---
-interface Beat {
-  id: string | number;
-  title: string;
-  imageUrl?: string;
-  producerName: string;
-  producerProfileUrl?: string;
-  bpm?: number;
-  key?: string;
-  audioSrc?: string;
-  beatUrl?: string;
-  licenses: License[];
-}
-interface FilterValues {
-  keyword?: string;
-  genres?: string[];
-  bpm?: [number, number];
-  keys?: string[];
-  tags?: string[];
-  price?: [number, number];
-}
-type SortOrder = 'relevance' | 'newest' | 'price_asc' | 'price_desc';
+// interface FilterValues { ... } // Move to client
+// type SortOrder = 'relevance' | 'newest' | 'price_asc' | 'price_desc'; // Move to client or keep if used in searchTracks signature
 
-// --- Skeleton Component (Keep for Suspense fallback) ---
-function BeatCardSkeleton() {
-    return (
-        <div className="rounded-xl overflow-hidden bg-white/5 border border-transparent">
-            <Skeleton className="aspect-square w-full rounded-none" />
-            <div className="p-4 space-y-2">
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-4 w-1/2" />
-                <div className="flex justify-end items-center gap-2 pt-2">
-                     <Skeleton className="h-4 w-10" />
-                     <Skeleton className="h-4 w-10" />
-                 </div>
-            </div>
-        </div>
-    );
-}
-const SkeletonGrid = () => {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-        {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => <BeatCardSkeleton key={i} />)}
-    </div>
-  );
-};
+// --- Updated Skeleton Component for Luminous Depths ---
+// Keeping skeleton logic within ExploreClientUI for now, removing duplicate here.
 
 interface ExplorePageProps {
   searchParams: { [key: string]: string | string[] | undefined };
 }
 
+export const metadata: Metadata = {
+  title: 'Explore Beats - Wavhaven',
+  description: 'Discover and browse high-quality beats, loops, and sound kits from talented producers.',
+};
+
 // --- Server Component --- 
 export default async function ExplorePage({ searchParams }: ExplorePageProps) {
 
-  // Pass the entire searchParams object directly to the action
-  const { tracks: searchResultTracks, totalCount } = await searchTracks({ searchParams });
+  // Create a truly plain object from searchParams
+  const plainSearchParams: { [key: string]: string | string[] | undefined } = {};
+  for (const key in searchParams) {
+    if (Object.prototype.hasOwnProperty.call(searchParams, key)) {
+      const value = searchParams[key];
+      // Ensure only string, array of strings, or undefined are passed
+      if (typeof value === 'string' || Array.isArray(value) || typeof value === 'undefined') {
+        plainSearchParams[key] = value;
+      }
+    }
+  }
 
-  // Map TrackSearchResult to Beat for the client UI
-  const mappedTracks: Beat[] = searchResultTracks.map(track => ({
-    id: track.id,
-    title: track.title,
-    imageUrl: (track.coverImageUrl && track.coverImageUrl.trim() !== '') ? track.coverImageUrl : undefined,
-    producerName: track.producer?.username || "Unknown Producer",
-    producerProfileUrl: track.producer?.username ? `/u/${track.producer.username}` : undefined,
-    bpm: track.bpm ?? undefined,
-    key: track.key ?? undefined,
-    audioSrc: (track.previewAudioUrl && track.previewAudioUrl.trim() !== '') ? track.previewAudioUrl : undefined,
-    beatUrl: `/track/${track.slug}`,
-    licenses: track.licenses as License[], // This might need more careful mapping
-  }));
+  // const breadcrumbItems = [
+  //   { label: 'Home', href: '/' },
+  //   { label: 'Explore', isCurrent: true },
+  // ];
 
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* SiteHeader might be in a layout above */}
-      <main className="flex-1">
-        <div className="container mx-auto px-4 py-8">
-          <h1 className="text-3xl font-bold mb-6">Explore Tracks</h1>
-          {/* Render the Client Component, passing initial data */}
-          {/* Suspense handles the initial server load fallback */}
-          <Suspense fallback={<SkeletonGrid />}>
-            <ExploreClientUI initialTracks={mappedTracks} totalCount={totalCount} />
-          </Suspense>
-        </div>
-      </main>
-      {/* SiteFooter might be in a layout above */}
-    </div>
+    <Container>
+      <h1 className="text-3xl font-bold mb-6 text-center">Explore Sounds</h1>
+      {/* <Breadcrumbs items={breadcrumbItems} className="mb-4" /> */}
+      {/* Pass searchParams directly to the client component */}
+      {/* Use Suspense for client-side data fetching */}
+      <Suspense fallback={<div>Loading filters and results...</div>}>
+        <ExploreClientUI serverSearchParams={plainSearchParams} />
+      </Suspense>
+    </Container>
   );
 } 

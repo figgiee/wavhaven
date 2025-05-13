@@ -46,6 +46,7 @@ interface PlayerActions {
     setLoading: (loading: boolean) => void;
     setError: (error: string | null) => void;
     clearPlayer: () => void; // Renamed from resetPlayer
+    removeFromQueue: (trackId: string) => void; // Action to remove a track
 }
 
 const initialState: PlayerState = {
@@ -256,19 +257,53 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
                     console.log('[PlayerStore] Clearing player state.');
                     set(initialState); // Reset to initial state
                 },
-            }),
-            {
-                name: 'wavhaven-player-storage', // Unique name for local storage
-                partialize: (state) => ({
-                    // Persist only specific parts of the state
-                    volume: state.volume,
-                    isMuted: state.isMuted,
-                    loopMode: state.loopMode,
-                    isShuffled: state.isShuffled,
-                    // Don't persist currentTrack, queue, isPlaying, isLoading, error
-                    // They should be re-initialized on page load or based on user actions
-                }),
-            },
+
+                removeFromQueue: (trackId) => {
+                    const { queue, currentTrack, currentIndexInQueue, isPlaying } = get();
+                    const trackIndexToRemove = queue.findIndex(t => t.id === trackId);
+
+                    if (trackIndexToRemove === -1) {
+                        console.warn(`[PlayerStore] Track ID ${trackId} not found in queue for removal.`);
+                        return;
+                    }
+
+                    const newQueue = queue.filter((_, index) => index !== trackIndexToRemove);
+                    let newCurrentIndex = currentIndexInQueue;
+                    let newCurrentTrack = currentTrack;
+                    let shouldStopPlaying = false;
+
+                    console.log(`[PlayerStore] Removing track ${trackId} at index ${trackIndexToRemove}. Current index: ${currentIndexInQueue}`);
+
+                    if (newQueue.length === 0) {
+                        // Queue is now empty
+                        console.log('[PlayerStore] Queue empty after removal.');
+                        newCurrentTrack = null;
+                        newCurrentIndex = -1;
+                        shouldStopPlaying = true;
+                    } else if (trackIndexToRemove === currentIndexInQueue) {
+                        // Removed the currently playing track
+                        console.log('[PlayerStore] Removed currently playing track.');
+                        newCurrentIndex = trackIndexToRemove % newQueue.length; // Stay at same index if possible, otherwise wrap
+                        newCurrentTrack = newQueue[newCurrentIndex];
+                        console.log(`[PlayerStore] Playing next track ${newCurrentTrack.id} at new index ${newCurrentIndex}`);
+                    } else if (trackIndexToRemove < currentIndexInQueue) {
+                        // Removed a track *before* the current one, adjust index
+                        newCurrentIndex = currentIndexInQueue - 1;
+                        console.log(`[PlayerStore] Removed track before current. Adjusted index to ${newCurrentIndex}`);
+                    } else {
+                        // Removed a track *after* the current one, index remains the same
+                        console.log(`[PlayerStore] Removed track after current. Index remains ${newCurrentIndex}`);
+                    }
+
+                    set({
+                        queue: newQueue,
+                        currentIndexInQueue: newCurrentIndex,
+                        currentTrack: newCurrentTrack,
+                        isPlaying: shouldStopPlaying ? false : isPlaying,
+                        isLoading: (trackIndexToRemove === currentIndexInQueue && !shouldStopPlaying),
+                    });
+                },
+            }) // End of actions object
         )
     )
 ); 

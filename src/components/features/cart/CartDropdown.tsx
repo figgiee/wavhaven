@@ -120,15 +120,24 @@ export default function CartDropdown() {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        <Button variant="ghost" size="icon" className="relative rounded-full">
-          <ShoppingCart className="h-5 w-5 text-gray-400 group-hover:text-white" />
-          {itemCount > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
-              {itemCount}
-            </span>
-          )}
-          <span className="sr-only">Open Cart</span>
-        </Button>
+        <Link href="/cart" aria-label="View shopping cart page">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="relative rounded-full text-neutral-300 hover:text-cyan-glow focus-visible:ring-cyan-glow" 
+            asChild
+          >
+            <div>
+              <ShoppingCart className="h-5 w-5" />
+              {itemCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-glow text-xs font-bold text-abyss-blue">
+                  {itemCount}
+                </span>
+              )}
+              <span className="sr-only">Open Cart</span>
+            </div>
+          </Button>
+        </Link>
 
         <AnimatePresence>
           {isOpen && (
@@ -138,100 +147,105 @@ export default function CartDropdown() {
               animate="visible"
               exit="hidden"
               variants={dropdownVariants}
-              className="absolute top-full right-0 mt-2 w-80 rounded-xl border border-white/10 bg-gradient-to-br from-black/80 to-gray-900/80 p-0 text-white shadow-xl backdrop-blur-lg z-50 outline-none overflow-hidden"
+              className="absolute top-full right-0 mt-2 w-80 rounded-xl border border-neutral-700/50 bg-neutral-900/80 p-0 text-neutral-100 shadow-xl backdrop-blur-md z-50 outline-none overflow-hidden"
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
             >
-      {items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
-          <ShoppingCart className="h-10 w-10 text-gray-500" />
-          <p className="text-sm text-gray-300">Your shopping cart is currently empty.</p>
-                <Button asChild variant="link" className="text-indigo-400 hover:text-indigo-300 p-0 h-auto text-sm">
-            <Link href="/explore">Start Browsing</Link>
-          </Button>
-        </div>
-      ) : (
-        <>
-          <div className="p-4 border-b border-white/10">
-            <h3 className="text-lg font-semibold">Shopping Cart ({itemCount})</h3>
-          </div>
-                <ScrollArea className="h-[250px] px-4">
-                  <div className="flex flex-col gap-3 py-2 pr-2">
-                    {items.map((item) => (
-                      <div key={item.licenseId} className="flex items-center gap-3 group">
-                        <Avatar className="h-12 w-12 rounded border border-white/10 flex-shrink-0">
-                          <AvatarImage src={item.imageUrl ?? '/default-artwork.png'} alt={item.trackTitle} className="object-cover" />
-                          <AvatarFallback className="bg-gray-700 text-white">
-                            {item.trackTitle?.charAt(0)?.toUpperCase() ?? ' '}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <Link href={`/track/${item.slug || item.trackId}`} className="block group/link">
-                            <p className="truncate font-medium text-sm hover:text-indigo-400 transition-colors">{item.trackTitle}</p>
-                          </Link>
-                          <p className="text-xs text-gray-400 truncate">{item.producerName ?? 'Unknown Artist'} - {item.licenseName}</p>
-                          <p className="text-sm font-semibold text-indigo-400">{formatPrice(item.price / 100)}</p>
+              {items.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+                  <ShoppingCart className="h-10 w-10 text-neutral-500" />
+                  <p className="text-sm text-neutral-300">Your shopping cart is currently empty.</p>
+                  <Button asChild variant="link" className="text-cyan-glow hover:text-cyan-glow/80 p-0 h-auto text-sm">
+                    <Link href="/explore">Start Browsing</Link>
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="p-4 border-b border-neutral-700/50">
+                    <h3 className="text-lg font-semibold text-neutral-100">Shopping Cart ({itemCount})</h3>
+                  </div>
+                  <ScrollArea className="h-[250px] px-4">
+                    <div className="flex flex-col gap-3 py-2 pr-2">
+                      {items.map((item) => (
+                        <div key={item.licenseId} className="flex items-center gap-3 group">
+                          <Avatar className="h-12 w-12 rounded border border-neutral-700/50 flex-shrink-0">
+                            <AvatarImage src={item.imageUrl ?? '/placeholder-track.jpg'} alt={item.trackTitle} className="object-cover" />
+                            <AvatarFallback className="bg-neutral-700 text-neutral-100">
+                              {item.trackTitle?.charAt(0)?.toUpperCase() ?? ' '}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <Link href={`/track/${item.slug || item.trackId}`} className="block group/link">
+                              <p className="truncate font-medium text-sm text-neutral-100 hover:text-cyan-glow transition-colors">{item.trackTitle}</p>
+                            </Link>
+                            <p className="text-xs text-neutral-400 truncate">{item.producerName ?? 'Unknown Artist'} - {item.licenseName}</p>
+                            <p className="text-sm font-semibold text-cyan-glow">{formatPrice(item.price / 100)}</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-neutral-500 hover:text-magenta-spark hover:bg-magenta-spark/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              console.log(`[CartDropdown] Remove button clicked for track: ${item.trackId}, license: ${item.licenseId}`);
+                              removeItem(item.trackId, item.licenseId);
+                              toast.info(`"${item.trackTitle}" removed.`);
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                            <span className="sr-only">Remove {item.trackTitle}</span>
+                          </Button>
+                        </div>
+                      ))}
                     </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                          className="h-7 w-7 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            console.log(`[CartDropdown] Remove button clicked for track: ${item.trackId}, license: ${item.licenseId}`);
-                            removeItem(item.trackId, item.licenseId);
-                            toast.info(`"${item.trackTitle}" removed.`);
-                          }}
-                      >
-                          <X className="h-4 w-4" />
-                          <span className="sr-only">Remove {item.trackTitle}</span>
-                      </Button>
+                  </ScrollArea>
+                  <div className="border-t border-neutral-700/50 p-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-base font-medium text-neutral-100">Total</span>
+                      <span className="text-lg font-semibold text-cyan-glow">{formatPrice(total / 100)}</span>
                     </div>
-                    ))}
-            </div>
-          </ScrollArea>
-                <div className="border-t border-white/10 p-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="text-base font-medium">Total</span>
-                    <span className="text-lg font-semibold text-indigo-300">{formatPrice(total / 100)}</span>
-            </div>
-            <Button
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
-              onClick={handleCheckout}
-                    disabled={isLoading || !isLoaded}
-            >
-              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {!isLoaded ? 'Loading Auth...' : isLoading ? 'Processing...' : 'Checkout'}
-            </Button>
-          </div>
-        </>
-      )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-
-    <Dialog open={showCheckoutDialog} onOpenChange={handleDialogClose}>
-      <DialogContent className="sm:max-w-[800px] bg-white text-black">
-        <DialogHeader>
-          <DialogTitle>Complete Your Purchase</DialogTitle>
-          <DialogDescription>
-            Please enter your payment details below.
-          </DialogDescription>
-        </DialogHeader>
-        <div id="checkout" className="p-4">
-          {clientSecret && stripePromise && (
-            <EmbeddedCheckoutProvider
-              stripe={stripePromise}
-              options={{clientSecret}}
-            >
-              <EmbeddedCheckout />
-            </EmbeddedCheckoutProvider>
+                    <Button
+                      className="w-full bg-cyan-glow text-abyss-blue hover:bg-cyan-glow/90 active:bg-cyan-glow/80 shadow-glow-cyan-sm font-semibold"
+                      onClick={handleCheckout}
+                      disabled={isLoading || !isLoaded}
+                    >
+                      {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {!isLoaded ? 'Loading Auth...' : isLoading ? 'Processing...' : 'Checkout'}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </motion.div>
           )}
-           {!clientSecret && <p>Loading payment form...</p>}
-        </div>
-      </DialogContent>
-    </Dialog>
+        </AnimatePresence>
+      </div>
+
+      <Dialog open={showCheckoutDialog} onOpenChange={handleDialogClose}>
+        <DialogContent className="sm:max-w-[800px] bg-neutral-900/80 backdrop-blur-md border-neutral-700/60 text-neutral-100 rounded-xl shadow-2xl">
+          <DialogHeader className="p-6 pb-4 border-b border-neutral-700/50">
+            <DialogTitle className="text-xl font-semibold text-cyan-glow">Complete Your Purchase</DialogTitle>
+            <DialogDescription className="text-neutral-400 mt-1">
+              Please enter your payment details below.
+            </DialogDescription>
+          </DialogHeader>
+          <div id="checkout" className="p-4 sm:p-6 min-h-[300px]">
+            {clientSecret && stripePromise && (
+              <EmbeddedCheckoutProvider
+                stripe={stripePromise}
+                options={{clientSecret}}
+              >
+                <EmbeddedCheckout className="stripe-checkout-override" />
+              </EmbeddedCheckoutProvider>
+            )}
+            {!clientSecret && 
+              <div className="flex flex-col items-center justify-center h-full text-neutral-500">
+                <Loader2 className="h-8 w-8 animate-spin mb-3" />
+                <p>Loading payment form...</p>
+              </div>
+            }
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 } 

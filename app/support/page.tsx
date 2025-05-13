@@ -1,7 +1,7 @@
 'use client'; // Needed for form handling state (even if basic)
 
 import Link from 'next/link';
-import { useState } from 'react';
+// import { useState } from 'react'; // No longer needed
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,35 +11,35 @@ import { Mail, HelpCircle } from 'lucide-react';
 
 export default function SupportPage() {
   // Basic state for feedback, replace with actual form handling (e.g., react-hook-form)
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
-  const [message, setMessage] = useState('');
+  // const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle'); // Remove
+  // const [message, setMessage] = useState(''); // Remove
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setStatus('submitting');
-    setMessage('');
-
-    // --- TODO: Implement actual form submission logic --- 
-    // Example: Send data to an API endpoint
-    // const formData = new FormData(event.currentTarget);
-    // const response = await fetch('/api/support', { method: 'POST', body: formData });
-    // if (response.ok) {
-    //   setStatus('success');
-    //   setMessage('Your message has been sent successfully!');
-    //   event.currentTarget.reset();
-    // } else {
-    //   setStatus('error');
-    //   setMessage('Failed to send message. Please try again or email us directly.');
-    // }
-    
-    // --- Placeholder for demo --- 
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
-    // Simulate success for now
-    setStatus('success');
-    setMessage('Placeholder: Your message would have been sent!');
-     // event.currentTarget.reset(); // Uncomment when logic is implemented
-    // ------------------------ 
-  };
+  // const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => { // Remove entire function
+  //   event.preventDefault();
+  //   setStatus('submitting');
+  //   setMessage('');
+  //
+  //   // --- TODO: Implement actual form submission logic --- 
+  //   // Example: Send data to an API endpoint
+  //   // const formData = new FormData(event.currentTarget);
+  //   // const response = await fetch('/api/support', { method: 'POST', body: formData });
+  //   // if (response.ok) {
+  //   //   setStatus('success');
+  //   //   setMessage('Your message has been sent successfully!');
+  //   //   event.currentTarget.reset();
+  //   // } else {
+  //   //   setStatus('error');
+  //   //   setMessage('Failed to send message. Please try again or email us directly.');
+  //   // }
+  //   
+  //   // --- Placeholder for demo --- 
+  //   await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
+  //   // Simulate success for now
+  //   setStatus('success');
+  //   setMessage('Placeholder: Your message would have been sent!');
+  //    // event.currentTarget.reset(); // Uncomment when logic is implemented
+  //   // ------------------------ 
+  // };
 
   return (
     <div className="max-w-screen-md mx-auto px-4 sm:px-6 lg:px-8 py-16 text-gray-300">

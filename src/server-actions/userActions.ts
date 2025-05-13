@@ -69,96 +69,117 @@ export async function ensureUserRecord({
 	return user.id; // Return the internal database ID
 }
 
-// --- Update User Profile Schema ---
-const updateProfileSchema = z.object({
-	name: z.string().min(1, "Name cannot be empty").max(100, "Name is too long"),
-	storeName: z.string().max(100, "Store name is too long").optional(),
-	bio: z.string().max(1000, "Bio is too long").optional(),
+// Schema for the update payload
+const updateUserProfileSchema = z.object({
+	name: z.string().min(1, "Name cannot be empty").max(100).optional(),
+	storeName: z.string().max(100).optional(),
+	bio: z.string().max(1000).optional(),
+	// Add social links to the payload schema
+	websiteUrl: z.string().url().or(z.literal('')).optional().nullable(),
+	twitterUrl: z.string().url().or(z.literal('')).optional().nullable(),
+	instagramUrl: z.string().url().or(z.literal('')).optional().nullable(),
+	youtubeUrl: z.string().url().or(z.literal('')).optional().nullable(),
+	soundcloudUrl: z.string().url().or(z.literal('')).optional().nullable(),
+	tiktokUrl: z.string().url().or(z.literal('')).optional().nullable(),
+	// profileImageUrl: z.string().url().optional(), // Add later with upload
+	// bannerImageUrl: z.string().url().optional(), // Add later with upload
 });
 
-type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type UserProfileUpdatePayload = z.infer<typeof updateUserProfileSchema>;
 
-interface UpdateProfileResult {
+interface UpdateResult {
 	success: boolean;
 	error?: string;
 }
 
+// Define a type for the SellerProfile update data
+type SellerProfileUpdateData = {
+	storeName?: string | null;
+	bio?: string | null;
+	websiteUrl?: string | null;
+	twitterUrl?: string | null;
+	instagramUrl?: string | null;
+	youtubeUrl?: string | null;
+	soundcloudUrl?: string | null;
+	tiktokUrl?: string | null;
+};
+
 // --- Update User Profile Server Action ---
-export async function updateUserProfile(
-	values: UpdateProfileInput,
-): Promise<UpdateProfileResult> {
+export async function updateUserProfile(payload: UserProfileUpdatePayload): Promise<UpdateResult> {
+	const { userId: clerkId } = auth();
+	if (!clerkId) {
+		return { success: false, error: "User not authenticated." };
+	}
+
+	// Validate payload
+	const validationResult = updateUserProfileSchema.safeParse(payload);
+	if (!validationResult.success) {
+		// Combine errors for better feedback
+		const errors = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+		return { success: false, error: `Invalid input: ${errors}` };
+	}
+
+	const { name, storeName, bio, websiteUrl, twitterUrl, instagramUrl, youtubeUrl, soundcloudUrl, tiktokUrl } = validationResult.data;
+
 	try {
-		const validationResult = updateProfileSchema.safeParse(values);
-		if (!validationResult.success) {
-			return {
-				success: false,
-				error: validationResult.error.errors.map((e) => e.message).join(", "),
-			};
-		}
-
-		const { name, storeName, bio } = validationResult.data;
-
-		const user = await currentUser();
-		if (!user || !user.id) {
-			throw new Error("Not authenticated");
-		}
-		const clerkUserId = user.id;
-
-		const internalUserId = await getInternalUserId(clerkUserId);
-		if (!internalUserId) {
-			throw new Error("User record not found");
-		}
-
-		// Use a transaction to update User and SellerProfile together
-		await prisma.$transaction(async (tx) => {
-			// 1. Update User firstName and lastName
-			// Split the received 'name' back into firstName and lastName
-			const nameParts = name.trim().split(' ');
-			const inferredFirstName = nameParts[0] || null; // Handle empty string case
-			const inferredLastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
-
-			await tx.user.update({
-				where: { id: internalUserId },
-				data: {
-					firstName: inferredFirstName,
-					lastName: inferredLastName,
-				 },
-			});
-
-			// 2. Check if SellerProfile exists
-			const sellerProfile = await tx.sellerProfile.findUnique({
-				where: { userId: internalUserId },
-				select: { id: true },
-			});
-
-			// 3. Update SellerProfile if it exists and storeName/bio are provided
-			if (sellerProfile && (storeName !== undefined || bio !== undefined)) {
-				await tx.sellerProfile.update({
-					where: { id: sellerProfile.id },
-					data: {
-						bio: bio !== undefined ? bio : undefined, // Only update if provided
-					},
-				});
-			} else if (!sellerProfile && (storeName || bio)) {
-				// Optionally create SellerProfile if it doesn't exist and data is provided?
-				// For now, we only update existing profiles.
-				console.warn(
-					`Attempted to update non-existent SellerProfile for user ${internalUserId}. Store Name/Bio update skipped.`,
-				);
-			}
+		const user = await prisma.user.findUnique({
+			where: { clerkId },
+			select: { id: true, role: true, sellerProfile: { select: { id: true } } },
 		});
 
-		revalidatePath("/settings/profile"); // Revalidate the profile page path
+		if (!user) {
+			return { success: false, error: "User not found in database." };
+		}
+
+		// Prepare data for update/upsert
+		const updateData: Parameters<typeof prisma.user.update>[0]['data'] = {};
+		if (name !== undefined) {
+			updateData.name = name;
+		}
+		
+		// Use the specific type here
+		let sellerProfileUpdateData: SellerProfileUpdateData = {};
+		let hasSellerProfileUpdates = false;
+		if (user.role === UserRole.PRODUCER) {
+			if (storeName !== undefined) { sellerProfileUpdateData.storeName = storeName; hasSellerProfileUpdates = true; }
+			if (bio !== undefined) { sellerProfileUpdateData.bio = bio; hasSellerProfileUpdates = true; }
+			// Add social links
+			if (websiteUrl !== undefined) { sellerProfileUpdateData.websiteUrl = websiteUrl || null; hasSellerProfileUpdates = true; } 
+			if (twitterUrl !== undefined) { sellerProfileUpdateData.twitterUrl = twitterUrl || null; hasSellerProfileUpdates = true; }
+			if (instagramUrl !== undefined) { sellerProfileUpdateData.instagramUrl = instagramUrl || null; hasSellerProfileUpdates = true; }
+			if (youtubeUrl !== undefined) { sellerProfileUpdateData.youtubeUrl = youtubeUrl || null; hasSellerProfileUpdates = true; }
+			if (soundcloudUrl !== undefined) { sellerProfileUpdateData.soundcloudUrl = soundcloudUrl || null; hasSellerProfileUpdates = true; }
+			if (tiktokUrl !== undefined) { sellerProfileUpdateData.tiktokUrl = tiktokUrl || null; hasSellerProfileUpdates = true; }
+		}
+
+		// Use a transaction if updating both User and SellerProfile
+		if (hasSellerProfileUpdates) {
+			updateData.sellerProfile = {
+				upsert: {
+					where: { userId: user.id },
+					create: { ...sellerProfileUpdateData },
+					update: { ...sellerProfileUpdateData },
+				},
+			};
+		}
+		
+		// Execute the update
+		await prisma.user.update({
+			where: { id: user.id },
+			data: updateData,
+		});
+		
+		// Revalidate relevant paths
+		revalidatePath('/settings/profile');
 		if (user.username) {
-			revalidatePath(`/producer/${user.username}`); // Revalidate public profile path if username exists
+			revalidatePath(`/u/${user.username}`); // Revalidate public profile if username exists
 		}
 
 		return { success: true };
-	} catch (error: unknown) {
-		console.error("Error updating user profile:", error);
-		const errorMessage =
-			error instanceof Error ? error.message : "An unexpected error occurred.";
-		return { success: false, error: errorMessage };
+
+	} catch (error) {
+		console.error("Failed to update user profile:", error);
+		return { success: false, error: "Database error occurred." };
 	}
 }
 

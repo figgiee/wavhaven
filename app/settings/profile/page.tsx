@@ -12,10 +12,19 @@ async function getUserProfileData(clerkUserId: string) {
     select: {
       name: true,
       role: true,
+      profileImageUrl: true,
+      username: true,
       sellerProfile: {
         select: {
           storeName: true,
           bio: true,
+          websiteUrl: true,
+          twitterUrl: true,
+          instagramUrl: true,
+          youtubeUrl: true,
+          soundcloudUrl: true,
+          tiktokUrl: true,
+          bannerImageUrl: true,
         },
       },
     },
@@ -43,8 +52,16 @@ export default async function ProfileSettingsPage() {
 
   const initialData = {
     name: profileData.name,
+    profileImageUrl: profileData.profileImageUrl ?? null,
     storeName: profileData.sellerProfile?.storeName ?? null,
     bio: profileData.sellerProfile?.bio ?? null,
+    bannerImageUrl: profileData.sellerProfile?.bannerImageUrl ?? null,
+    websiteUrl: profileData.sellerProfile?.websiteUrl ?? null,
+    twitterUrl: profileData.sellerProfile?.twitterUrl ?? null,
+    instagramUrl: profileData.sellerProfile?.instagramUrl ?? null,
+    youtubeUrl: profileData.sellerProfile?.youtubeUrl ?? null,
+    soundcloudUrl: profileData.sellerProfile?.soundcloudUrl ?? null,
+    tiktokUrl: profileData.sellerProfile?.tiktokUrl ?? null,
   };
 
   const isProducer = profileData.role === UserRole.PRODUCER;

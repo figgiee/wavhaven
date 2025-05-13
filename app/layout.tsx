@@ -7,13 +7,18 @@ import { dark } from '@clerk/themes'; // Use dark theme for Clerk components
 
 import './globals.css';
 import { cn } from '@/lib/utils'; // Keep cn
-import { SiteHeader } from '@/components/layout/site-header'; // Placeholder import
-import { SiteFooter } from '@/components/layout/site-footer'; // Import SiteFooter
+import { SiteHeader } from '@/components/layout/site-header'; // ADDED
+import { SiteFooter } from '@/components/layout/site-footer'; // ADDED
+// SiteHeader and SiteFooter will be rendered by ConditionalLayoutWrapper
 import { AudioPlayerContainer } from '@/components/features/audio-player/AudioPlayerContainer'; // ADDED new player import
 import { PostHogProvider } from '@/components/providers/PostHogProvider'; // Based on rules
 import { Toaster } from '@/components/ui/sonner'; // Import Toaster
 import { ThemeProvider } from '@/components/providers/theme-provider'; // Added ThemeProvider import
 import { TooltipProvider } from "@/components/ui/tooltip"; // Import TooltipProvider
+import { ConditionalLayoutWrapper } from '@/components/layout/ConditionalLayoutWrapper'; // Import the new wrapper
+import { GlobalSearchModal } from '@/components/features/search/GlobalSearchModal'; // <-- Import GlobalSearchModal
+import { TailwindIndicator } from "@/components/theme/tailwind-indicator";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs"; // Import Breadcrumbs
 
 // Re-define Inter font
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
@@ -34,9 +39,9 @@ export default function RootLayout({
     <ClerkProvider 
        appearance={{
          baseTheme: dark, // Apply dark theme to Clerk components
-         variables: { colorPrimary: '#6366f1' }, // Example: Use indigo for primary color
+         variables: { colorPrimary: '#00E0FF' }, // Updated to cyan-glow
          elements: {
-           userButtonPopoverCard: "bg-gray-900 border-gray-700",
+           userButtonPopoverCard: "bg-gray-900 border-gray-700", // These could also use our theme's neutral colors
            userButtonPopoverActions: "text-white",
            userButtonPopoverActionButton__signOut: "focus:bg-red-500/20",
            // Add more Clerk component overrides if needed
@@ -56,18 +61,25 @@ export default function RootLayout({
           {/* Wrap content INSIDE body with ThemeProvider */}
           <ThemeProvider
             attribute="class"
-            defaultTheme="dark"
+            defaultTheme="system"
+            enableSystem={true}
             disableTransitionOnChange
           >
             <PostHogProvider>
               <TooltipProvider>
                 <div className="relative flex min-h-screen flex-col">
-                  <SiteHeader /> 
-                  <main className="flex flex-1 flex-col pb-24">
-                    {children}
-                  </main>
-                  <SiteFooter /> 
+                  <ConditionalLayoutWrapper>
+                    {/* <SiteHeader /> */}
+                    <main className="flex-1">
+                      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6">
+                        <Breadcrumbs /> {/* Add Breadcrumbs here */}
+                      </div>
+                      {children}
+                    </main>
+                    {/* <SiteFooter /> */}
+                  </ConditionalLayoutWrapper>
                   <AudioPlayerContainer />
+                  <GlobalSearchModal /> {/* <-- Render GlobalSearchModal here */}
                 </div>
               </TooltipProvider>
               <Toaster 
@@ -76,6 +88,7 @@ export default function RootLayout({
                 theme="dark" 
                 closeButton 
               />
+              <TailwindIndicator />
             </PostHogProvider>
           </ThemeProvider>
         </body>

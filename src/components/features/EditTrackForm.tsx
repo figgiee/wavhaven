@@ -28,6 +28,8 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { Link } from "@/components/ui/link";
+import { Progress } from "@/components/ui/progress";
 
 interface EditTrackFormProps {
   track: TrackForEdit;
@@ -49,6 +51,7 @@ const formSchema = z.object({
   licenseRadioStations: z.coerce.number().int().nonnegative().nullable(),
   licenseMusicVideos: z.coerce.number().int().nonnegative().nullable(),
   licenseContractText: z.string().optional(),
+  audioFile: z.instanceof(File).optional(),
 });
 
 type EditTrackFormValues = z.infer<typeof formSchema>;
@@ -558,9 +561,37 @@ export default function EditTrackForm({ track }: EditTrackFormProps) {
           })}
         </div>
 
+        <FormField
+          control={form.control}
+          name="audioFile"
+          render={({ field }) => (
+            <FormItem className="bg-neutral-800/50 p-6 rounded-lg border border-neutral-700/70">
+              <FormLabel className="text-lg font-semibold text-neutral-100">Track Audio File</FormLabel>
+              <FormDescription className="text-neutral-400">
+                Upload the main audio file for your track (WAV, MP3, etc.). This will be the file delivered to customers.
+              </FormDescription>
+              <FormControl>
+                <Input 
+                  type="file" 
+                  onChange={handleFileChange(field.onChange, 'audioFile')} 
+                  className="file:text-cyan-glow file:bg-cyan-glow/10 hover:file:bg-cyan-glow/20 file:border-none file:px-3 file:py-1.5 file:rounded-md file:text-xs file:font-semibold cursor-pointer"
+                  accept=".mp3,.wav,.aac,.flac,.ogg"
+                />
+              </FormControl>
+              {uploadProgress.audioFile > 0 && uploadProgress.audioFile < 100 && (
+                <Progress value={uploadProgress.audioFile} className="w-full h-2 mt-2 bg-neutral-700 [&>div]:bg-cyan-glow" />
+              )}
+              {track?.audioFileUrl && !form.getValues("audioFile") && (
+                 <div className="mt-2 text-xs text-neutral-400">Current: <Link href={track.audioFileUrl} target="_blank" className="text-cyan-glow hover:underline">{track.audioFileName || 'audio_file'}</Link></div>
+              )}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         {error && <p className="text-sm font-medium text-destructive mt-6">{error}</p>}
 
-        <div className="flex justify-end gap-4 pt-6 border-t border-border">
+        <div className="flex justify-end gap-4 pt-6 border-t border-[hsl(var(--border))]">
           {track && !track.isPublished && (
             <Button 
               type="button" 

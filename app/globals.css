@@ -1,104 +1,150 @@
 @import "tailwindcss";
 
 @layer base {
-  :root { /* New Light Mode Defaults - OKLCH */
-    --radius: 0.3rem;
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.141 0.005 285.823);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.141 0.005 285.823);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.141 0.005 285.823);
-    --primary: oklch(0.623 0.214 259.815);
-    --primary-foreground: oklch(0.97 0.014 254.604);
-    --secondary: oklch(0.967 0.001 286.375);
-    --secondary-foreground: oklch(0.21 0.006 285.885);
-    --muted: oklch(0.967 0.001 286.375);
-    --muted-foreground: oklch(0.552 0.016 285.938);
-    --accent: oklch(0.967 0.001 286.375);
-    --accent-foreground: oklch(0.21 0.006 285.885);
-    --destructive: oklch(0.577 0.245 27.325);
-    --destructive-foreground: oklch(0.97 0.014 254.604); /* Assuming white-ish foreground for destructive */
-    --border: oklch(0.92 0.004 286.32);
-    --input: oklch(0.92 0.004 286.32);
-    --ring: oklch(0.623 0.214 259.815);
+  :root {
+    --background: 0 0% 100%; /* White */
+    --foreground: 240 10% 3.9%; /* Near black for text on light bg */
+
+    /* Neutrals FOR LIGHT THEME. text-neutral-xxx should be dark enough on white. */
+    /* Adjusted L values for better contrast on white background */
+    --neutral-50: 240 5% 96%;   /* Very light gray (backgrounds) */
+    --neutral-100: 240 6% 55%;  /* Darker: For less important text, aiming for ~3:1 on white. Was 80% */
+    --neutral-200: 240 6% 50%;  /* Darker: For borders, aiming for ~3:1 on white. Was 70% */
+    --neutral-300: 240 5% 45%;  /* Darker: For text, aiming for ~4.5:1 on white. Was 60% */
+    --neutral-400: 240 4% 40%;  /* Darker: For primary text. Was 50%. Contrast with white is ~5.9:1 */
+    --neutral-500: 240 5% 30%;  /* Darker gray (text) */
+    --neutral-600: 240 5% 25%;  /* Dark gray (text, primary on dark sections) */
+    --neutral-700: 240 5% 20%;  /* Darker gray (backgrounds for dark sections) */
+    --neutral-800: 240 5% 18%;  /* Darker gray (backgrounds for dark sections) */
+    --neutral-900: 240 5% 10%;  /* Very dark gray (e.g., bg-neutral-900 sections in light theme) Was 15% */
+    --neutral-950: 240 5% 7%;   /* Near black (e.g., for text on very light dark-theme backgrounds) */
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215 16% 35%; /* Darker muted-foreground. Original: 215 16% 42%; */
+    --accent: 346.8 77.2% 49.8%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
     --chart-1: oklch(0.646 0.222 41.116);
     --chart-2: oklch(0.6 0.118 184.704);
     --chart-3: oklch(0.398 0.07 227.392);
     --chart-4: oklch(0.828 0.189 84.429);
     --chart-5: oklch(0.769 0.188 70.08);
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.141 0.005 285.823);
-    --sidebar-primary: oklch(0.623 0.214 259.815);
-    --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-    --sidebar-accent: oklch(0.967 0.001 286.375);
-    --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-    --sidebar-border: oklch(0.92 0.004 286.32);
-    --sidebar-ring: oklch(0.623 0.214 259.815);
   }
- 
-  .dark {
-    --background: oklch(0.141 0.005 285.823);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.21 0.006 285.885);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.21 0.006 285.885);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.546 0.245 262.881);
-    --primary-foreground: oklch(0.379 0.146 265.522);
-    --secondary: oklch(0.274 0.006 286.033);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.274 0.006 286.033);
-    --muted-foreground: oklch(0.705 0.015 286.067);
-    --accent: oklch(0.274 0.006 286.033);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --destructive-foreground: oklch(0.985 0 0); /* Assuming white-ish foreground for destructive */
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.488 0.243 264.376);
-    --chart-1: oklch(0.488 0.243 264.376);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.769 0.188 70.08);
-    --chart-4: oklch(0.627 0.265 303.9);
-    --chart-5: oklch(0.645 0.246 16.439);
-    --sidebar: oklch(0.21 0.006 285.885);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.546 0.245 262.881);
-    --sidebar-primary-foreground: oklch(0.379 0.146 265.522);
-    --sidebar-accent: oklch(0.274 0.006 286.033);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.488 0.243 264.376);
-  }
-}
 
-@layer base {
-  /* Webkit browsers */
+  .dark {
+    --background: 240 10% 3.9%; /* Near black */
+    --foreground: 210 20% 98%; /* White */
+
+    /* Explicit neutral scale for DARK theme - Needs LIGHTER grays */
+    /* Original values seemed okay, maybe slightly adjust for consistency */
+    --neutral-50: 240 5% 10%;   /* Very dark */
+    --neutral-100: 240 5% 15%;  /* Darker */
+    --neutral-200: 240 5% 20%;  /* Dark */
+    --neutral-300: 240 5% 30%;  /* Mid-dark gray */
+    --neutral-400: 240 4% 40%;  /* Mid gray - Contrast ~4.1 vs dark bg (borderline) */
+    --neutral-500: 240 4% 50%;  /* Mid-gray for text, good contrast on dark-background */
+    --neutral-600: 240 5% 65%;  /* Lighter gray for text */
+    --neutral-700: 240 5% 75%;  /* Even lighter gray for text */
+    --neutral-800: 240 5% 85%;  /* Very light gray for prominent text */
+    --neutral-900: 240 5% 92%;  /* Near white for headings/main text */
+    --neutral-950: 210 20% 98%;  /* White */
+
+    --card: 240 10% 3.9%;
+    --card-foreground: 210 20% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 70%; /* Slightly lighter muted-foreground for dark theme for better safety */
+    --accent: 346.8 77.2% 49.8%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --chart-1: oklch(0.646 0.222 41.116);
+    --chart-2: oklch(0.6 0.118 184.704);
+    --chart-3: oklch(0.398 0.07 227.392);
+    --chart-4: oklch(0.828 0.189 84.429);
+    --chart-5: oklch(0.769 0.188 70.08);
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    /* font-feature-settings: "rlig" 1, "calt" 1; */ /* Commented out for testing */
+  }
+
+  /* ALL OTHER BASE STYLES (h1-h6, scrollbar, etc.) COMMENTED OUT FOR TESTING */
+  /*
+  h1, h2, h3, h4, h5, h6 {
+  }
   ::-webkit-scrollbar {
     width: 10px;
     background: transparent;
   }
-
   ::-webkit-scrollbar-track {
-    background-color: hsl(var(--muted) / 0.5); /* Keep HSL here for compatibility or switch to OKLCH if preferred */
+    background-color: hsl(var(--muted) / 0.5); 
     border-radius: 5px;
   }
-
   ::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--secondary)); /* Keep HSL here for compatibility or switch to OKLCH if preferred */
+    background-color: hsl(var(--secondary)); 
     border-radius: 5px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
-
   ::-webkit-scrollbar-thumb:hover {
-    background-color: hsl(var(--secondary-foreground) / 0.5); /* Keep HSL here */
+    background-color: hsl(var(--secondary-foreground) / 0.5);
   }
-
-  /* Firefox */
   * {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--secondary)) hsl(var(--muted) / 0.5); /* Keep HSL here */
+    scrollbar-color: hsl(var(--secondary)) hsl(var(--muted) / 0.5);
   }
+  */
+}
+
+/* ALL CUSTOM UTILITIES COMMENTED OUT FOR TESTING */
+/*
+.h-dynamic-screen {
+  height: calc(var(--vh, 1vh) * 100);
+}
+.border {
+  border-color: hsl(var(--border));
+}
+.ring-offset-background {
+  border-color: hsl(var(--border));
+}
+*/
+
+/* Hide browser default clear button for search inputs */
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance:none;
+  appearance:none; /* Also add standard property */
+}
+
+/* For IE/Edge (though type=search behavior might differ) */
+input[type="search"]::-ms-clear {
+  display: none;
+  width : 0;
+  height: 0;
 }

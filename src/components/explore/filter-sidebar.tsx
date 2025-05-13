@@ -19,6 +19,7 @@ import {
     CommandItem, 
     CommandList 
 } from "@/components/ui/command";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // {/* TODO: Define more specific types for filters */}
 interface FilterValues {
@@ -27,6 +28,7 @@ interface FilterValues {
   bpm: [number, number];
   keys: string[];
   tags: string[];
+  moods: string[];
   price?: [number, number];
 }
 
@@ -41,6 +43,7 @@ interface FilterSidebarProps {
 const availableGenres = ['Hip Hop', 'Trap', 'R&B', 'Lo-Fi', 'Pop', 'Electronic'];
 const availableKeys = ['Cmaj', 'Cmin', 'Gmaj', 'Gmin', 'Dmaj', 'Dmin', 'Amaj', 'Amin', 'Emaj', 'Emin', 'Bmaj', 'Bmin', 'F#maj', 'F#min', 'C#maj', 'C#min', 'Fmaj', 'Fmin', 'Bbmaj', 'Bbmin', 'Ebmaj', 'Ebmin', 'Abmaj', 'Abmin'];
 const availableTags = ['Dark', 'Smooth', 'Energetic', 'Chill', 'Melodic', 'Hard', 'Wavy', 'Ambient'];
+const availableMoods = ['Focused', 'Relaxed', 'Hyped', 'Introspective', 'Aggressive', 'Blissful', 'Nostalgic'];
 const defaultBpmRange: [number, number] = [60, 180];
 const defaultPriceRange: [number, number] = [0, 200];
 
@@ -51,16 +54,20 @@ export function FilterSidebar({ initialFilters, onFiltersChange, className }: Fi
   const [bpmRange, setBpmRange] = useState<[number, number]>(initialFilters?.bpm || defaultBpmRange);
   const [selectedKeys, setSelectedKeys] = useState<string[]>(initialFilters?.keys || []);
   const [selectedTags, setSelectedTags] = useState<string[]>(initialFilters?.tags || []);
+  const [selectedMoods, setSelectedMoods] = useState<string[]>(initialFilters?.moods || []);
   const [priceRange, setPriceRange] = useState<[number, number]>(initialFilters?.price || defaultPriceRange);
   // State for filter inputs
   const [keySearchTerm, setKeySearchTerm] = useState('');
   const [tagSearchTerm, setTagSearchTerm] = useState('');
+  const [moodSearchTerm, setMoodSearchTerm] = useState('');
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  const [moodPopoverOpen, setMoodPopoverOpen] = useState(false);
+  const [genreSearchTerm, setGenreSearchTerm] = useState('');
 
-  // Filtered options based on search terms
-  const filteredKeys = availableKeys.filter(key => 
-    key.toLowerCase().includes(keySearchTerm.toLowerCase())
-  );
+  const filteredGenres = availableGenres.filter(g => g.toLowerCase().includes(genreSearchTerm.toLowerCase()));
+  const filteredKeys = availableKeys.filter(k => k.toLowerCase().includes(keySearchTerm.toLowerCase()));
+  const filteredTags = availableTags.filter(t => t.toLowerCase().includes(tagSearchTerm.toLowerCase()));
+  const filteredMoods = availableMoods.filter(m => m.toLowerCase().includes(moodSearchTerm.toLowerCase()));
 
   // Helper to get current filter state
   const getCurrentFilters = (): FilterValues => ({
@@ -69,6 +76,7 @@ export function FilterSidebar({ initialFilters, onFiltersChange, className }: Fi
     bpm: bpmRange,
     keys: selectedKeys,
     tags: selectedTags,
+    moods: selectedMoods,
     price: priceRange,
   });
 
@@ -94,16 +102,7 @@ export function FilterSidebar({ initialFilters, onFiltersChange, className }: Fi
   // Use onValueCommit for Slider to trigger Apply only when user finishes sliding
   // OR rely on the Apply button entirely
   const handleBpmCommit = (value: [number, number]) => {
-      // We could potentially trigger apply here, but sticking to explicit button for now
-      console.log('BPM commit:', value);
-      setBpmRange(defaultBpmRange);
-      setSelectedKeys([]);
-      setSelectedTags([]);
-      setPriceRange(defaultPriceRange);
-      setKeyword('');
-      console.log('Filters reset, applying empty filters');
-      // Also apply the reset immediately
-      onFiltersChange?.({ genres: [], bpm: defaultBpmRange, keys: [], tags: [], price: defaultPriceRange });
+      setBpmRange(value);
   };
 
    const handleKeyChange = (key: string, checked: boolean) => {
@@ -136,11 +135,39 @@ export function FilterSidebar({ initialFilters, onFiltersChange, className }: Fi
       setTagPopoverOpen(false); // Close popover after selection
   };
 
+  const handleMoodSelect = (mood: string) => {
+    if (!selectedMoods.includes(mood)) {
+        handleMultiSelectChange(mood, 'moods');
+    }
+    setMoodSearchTerm('');
+    setMoodPopoverOpen(false);
+  };
+
   // --- Apply and Reset Handlers ---
   const handleApplyFilters = () => {
     const currentFilters = getCurrentFilters();
     console.log('Applying Filters:', currentFilters);
     onFiltersChange?.(currentFilters); // Call the prop function passed from parent
+  };
+
+  const handleResetFilters = () => {
+    setKeyword('');
+    setSelectedGenres([]);
+    setBpmRange(defaultBpmRange);
+    setSelectedKeys([]);
+    setSelectedTags([]);
+    setSelectedMoods([]);
+    setPriceRange(defaultPriceRange);
+    // Immediately apply these reset filters
+    onFiltersChange?.({
+        keyword: '',
+        genres: [],
+        bpm: defaultBpmRange,
+        keys: [],
+        tags: [],
+        moods: [],
+        price: defaultPriceRange,
+    });
   };
 
   const handleBpmInputChange = (index: number, value: string) => {
@@ -177,271 +204,285 @@ export function FilterSidebar({ initialFilters, onFiltersChange, className }: Fi
     }
   };
 
+  const handlePriceCommit = (value: [number, number]) => {
+    setPriceRange(value);
+  };
+
+  // Combined handler for multi-select popovers (Keys and Tags)
+  const handleMultiSelectChange = (value: string, type: 'keys' | 'tags' | 'moods') => {
+    if (type === 'keys') {
+        const newKeys = selectedKeys.includes(value) 
+            ? selectedKeys.filter(k => k !== value)
+            : [...selectedKeys, value];
+        setSelectedKeys(newKeys);
+    } else if (type === 'tags') {
+        const newTags = selectedTags.includes(value)
+            ? selectedTags.filter(t => t !== value)
+            : [...selectedTags, value];
+        setSelectedTags(newTags);
+    } else if (type === 'moods') {
+        const newMoods = selectedMoods.includes(value)
+            ? selectedMoods.filter(m => m !== value)
+            : [...selectedMoods, value];
+        setSelectedMoods(newMoods);
+    }
+  };
+
   return (
-    <aside className={cn("w-full", className)}>
-      <div>
-        {/* Header and Reset Button */}
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold flex items-center">
-            <ListFilter size={20} className="mr-2 text-gray-400" />
-            Filters
-          </h2>
-          <Button variant="ghost" size="sm" onClick={handleApplyFilters} className="text-xs text-gray-400 hover:text-white">
-            <RotateCcw size={14} className="mr-1" />
-            Reset
-          </Button>
+    <div className={cn("flex flex-col h-full", className)}>
+        {/* Header */}
+        <div className="flex justify-between items-center p-4 border-b border-neutral-700">
+            <h2 className="text-lg font-semibold text-neutral-100 flex items-center">
+                <ListFilter size={18} className="mr-2.5 text-cyan-glow" />
+                Filter Sounds
+            </h2>
+            <Button variant="ghost" size="sm" onClick={handleResetFilters} className="text-xs text-neutral-400 hover:text-magenta-spark px-2 py-1">
+                <RotateCcw size={13} className="mr-1.5" />
+                Reset All
+            </Button>
         </div>
 
-        {/* Filters Accordion */}
-        <div className="bg-gradient-to-br from-white/5 to-white/[.02] rounded-lg p-4 backdrop-blur-md border border-white/10 space-y-4">
-          {/* Keyword Search - Placed outside accordion for prominence */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input 
-              type="text"
-              placeholder="Search by keyword..."
-              value={keyword}
-              onChange={handleKeywordChange}
-              className="h-10 text-sm pl-10 bg-white/5 border-white/10 focus:ring-indigo-500/60 focus:border-indigo-500/30"
-            />
-          </div>
-
-          <Accordion type="multiple" defaultValue={['item-1', 'item-2', 'item-3', 'item-4', 'item-5']} className="w-full">
-            {/* Genre Filter */}
-            <AccordionItem value="item-1">
-              <AccordionTrigger className="text-base hover:no-underline">Genre</AccordionTrigger>
-              <AccordionContent className="pt-3 space-y-2 max-h-60 overflow-y-auto pr-2">
-                {availableGenres.map((genre) => (
-                  <div key={genre} className="flex items-center space-x-2">
-                    <Checkbox
-                        id={`genre-${genre}`}
-                        checked={selectedGenres.includes(genre)}
-                        onCheckedChange={(checked) => handleGenreChange(genre, !!checked)}
-                        className="border-gray-600 data-[state=checked]:bg-indigo-500 data-[state=checked]:border-indigo-500"
-                    />
-                    <Label htmlFor={`genre-${genre}`} className="text-sm font-normal text-gray-200 cursor-pointer">
-                      {genre}
-                    </Label>
-                  </div>
-                ))}
-              </AccordionContent>
-            </AccordionItem>
-
-            {/* BPM Filter */}
-            <AccordionItem value="item-2">
-              <AccordionTrigger className="text-base hover:no-underline">BPM</AccordionTrigger>
-              <AccordionContent className="pt-4 space-y-4">
-                <Slider
-                  value={bpmRange}
-                  onValueChange={handleBpmChange} // Updates state while sliding
-                  onValueCommit={handleBpmCommit} // Can use this later if needed
-                  min={40}
-                  max={220}
-                  step={1}
-                  minStepsBetweenThumbs={5}
-                  className="[&>span:first-child]:h-1 [&>span>span]:bg-indigo-500 [&>span>span]:h-1.5 [&>span>span]:w-1.5 [&>span>span]:border-0 [&>span>span:focus-visible]:ring-0 [&>span>span:focus-visible]:ring-offset-0 [&>span>span:focus-visible]:shadow-[0_0_0_3px_rgba(99,102,241,0.5)]"
-                 />
-                 <div className="flex justify-between items-center gap-3">
-                    <div className="flex-1 space-y-1">
-                        <Label htmlFor="min-bpm" className="text-xs text-gray-400">Min BPM</Label>
+        {/* Scrollable Filter Area */}
+        <ScrollArea className="flex-grow p-4">
+            <Accordion type="multiple" defaultValue={['genres', 'bpm', 'keys', 'tags', 'moods', 'price']} className="w-full space-y-3">
+                {/* Genre Filter */}
+                <AccordionItem value="genres" className="border-b-0 rounded-md bg-neutral-800/50 p-0.5 border border-neutral-700/70">
+                    <AccordionTrigger className="text-sm font-medium text-neutral-200 hover:no-underline px-3 py-2.5 hover:bg-neutral-700/50 rounded-t-md transition-colors">
+                        Genre
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-2 pb-3 px-3 space-y-1 bg-neutral-800/30 rounded-b-md">
                         <Input 
-                            id="min-bpm"
-                            type="number"
-                            value={bpmRange[0]}
-                            onChange={(e) => handleBpmInputChange(0, e.target.value)}
+                            type="text"
+                            placeholder="Search genres..."
+                            value={genreSearchTerm}
+                            onChange={(e) => setGenreSearchTerm(e.target.value)}
+                            className="h-8 text-xs mb-2 bg-neutral-700/70 border-neutral-600 placeholder:text-neutral-500 text-neutral-200 focus:ring-cyan-glow focus:border-cyan-glow"
+                        />
+                        <ScrollArea className="max-h-40 pr-1">
+                            {filteredGenres.length > 0 ? filteredGenres.map((genre) => (
+                                <div key={genre} className="flex items-center space-x-2.5 py-1.5 px-1 rounded hover:bg-neutral-700/50 transition-colors">
+                                    <Checkbox
+                                        id={`genre-${genre}`}
+                                        checked={selectedGenres.includes(genre)}
+                                        onCheckedChange={(checked) => handleGenreChange(genre, !!checked)}
+                                        className="border-neutral-600 data-[state=checked]:bg-cyan-glow data-[state=checked]:border-cyan-glow/70 focus-visible:ring-cyan-glow/50 shrink-0"
+                                    />
+                                    <Label htmlFor={`genre-${genre}`} className="text-xs font-normal text-neutral-300 cursor-pointer select-none">
+                                    {genre}
+                                    </Label>
+                                </div>
+                            )) : <p className="text-xs text-neutral-500 text-center py-2">No genres found.</p>}
+                        </ScrollArea>
+                    </AccordionContent>
+                </AccordionItem>
+
+                {/* BPM Filter */}
+                <AccordionItem value="bpm" className="border-b-0 rounded-md bg-neutral-800/50 p-0.5 border border-neutral-700/70">
+                    <AccordionTrigger className="text-sm font-medium text-neutral-200 hover:no-underline px-3 py-2.5 hover:bg-neutral-700/50 rounded-t-md transition-colors">BPM Range</AccordionTrigger>
+                    <AccordionContent className="pt-3 pb-3 px-3 space-y-3 bg-neutral-800/30 rounded-b-md">
+                        <Slider
+                            value={bpmRange}
+                            onValueChange={handleBpmChange}
+                            onValueCommit={handleBpmCommit}
                             min={40}
-                            max={bpmRange[1]} // Dynamic max based on the other thumb
-                            step={1}
-                            className="h-8 text-sm bg-white/5 border-white/10 focus:ring-indigo-500/60 focus:border-indigo-500/30"
-                         />
-                     </div>
-                     <div className="flex-1 space-y-1">
-                        <Label htmlFor="max-bpm" className="text-xs text-gray-400">Max BPM</Label>
-                         <Input 
-                            id="max-bpm"
-                            type="number"
-                            value={bpmRange[1]}
-                            onChange={(e) => handleBpmInputChange(1, e.target.value)}
-                            min={bpmRange[0]} // Dynamic min based on the other thumb
                             max={220}
                             step={1}
-                            className="h-8 text-sm bg-white/5 border-white/10 focus:ring-indigo-500/60 focus:border-indigo-500/30"
-                         />
-                    </div>
-                 </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            {/* Key Filter */}
-            <AccordionItem value="item-3">
-              <AccordionTrigger className="text-base hover:no-underline">Key</AccordionTrigger>
-              <AccordionContent className="pt-3 space-y-3">
-                {/* Key Search Input */}
-                <Input 
-                  type="text"
-                  placeholder="Search keys..."
-                  value={keySearchTerm}
-                  onChange={(e) => setKeySearchTerm(e.target.value)}
-                  className="h-8 text-sm bg-white/10 border-white/15 focus:ring-indigo-500/60 focus:border-indigo-500/30"
-                />
-                {/* Key List (Scrollable) */}
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                  {filteredKeys.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                      {filteredKeys.map((key) => (
-                        <div key={key} className="flex items-center space-x-2">
-                          <Checkbox 
-                              id={`key-${key}`}
-                              checked={selectedKeys.includes(key)}
-                              onCheckedChange={(checked) => handleKeyChange(key, !!checked)}
-                              className="border-gray-600 data-[state=checked]:bg-indigo-500 data-[state=checked]:border-indigo-500"
-                          />
-                          <Label htmlFor={`key-${key}`} className="text-sm font-normal text-gray-200 cursor-pointer">
-                            {key}
-                          </Label>
+                            minStepsBetweenThumbs={5}
+                            className="[&>span:first-child]:h-1.5 [&>span:first-child]:bg-neutral-700 [&>span>span]:bg-cyan-glow [&>span>span]:h-3 [&>span>span]:w-3 [&>span>span]:border-2 [&>span>span]:border-neutral-900 [&>span>span:focus-visible]:ring-1 [&>span>span:focus-visible]:ring-cyan-glow/50 [&>span>span:focus-visible]:ring-offset-0 [&>span>span:focus-visible]:shadow-[0_0_0_2px_theme(colors.neutral.900),0_0_0_4px_theme(colors.cyan-glow / 0.4)]"
+                        />
+                        <div className="flex justify-between items-center gap-2">
+                            <Input type="number" value={bpmRange[0]} onChange={(e) => handleBpmInputChange(0, e.target.value)} className="h-8 text-xs text-center bg-neutral-700/70 border-neutral-600 placeholder:text-neutral-500 text-neutral-200 focus:ring-cyan-glow focus:border-cyan-glow" />
+                            <span className="text-neutral-500 text-xs">to</span>
+                            <Input type="number" value={bpmRange[1]} onChange={(e) => handleBpmInputChange(1, e.target.value)} className="h-8 text-xs text-center bg-neutral-700/70 border-neutral-600 placeholder:text-neutral-500 text-neutral-200 focus:ring-cyan-glow focus:border-cyan-glow" />
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-400 text-center py-2">No keys found.</p>
-                  )}
-                 </div>
-              </AccordionContent>
-            </AccordionItem>
+                    </AccordionContent>
+                </AccordionItem>
 
-            {/* Tags Filter */}
-            <AccordionItem value="item-4" className="border-b-0">
-              <AccordionTrigger className="text-base hover:no-underline">Tags</AccordionTrigger>
-              <AccordionContent className="pt-3 space-y-3">
-                {/* Tag Combobox using Command and Popover */}
-                <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={tagPopoverOpen}
-                      className="w-full justify-between h-9 bg-white/10 border-white/15 hover:bg-white/15 text-gray-300 font-normal"
-                    >
-                      {selectedTags.length > 0 
-                        ? `${selectedTags.length} tag${selectedTags.length > 1 ? 's' : ''} selected` 
-                        : "Select tags..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0 bg-gray-900 border-gray-700">
-                    <Command>
-                      <CommandInput 
-                        placeholder="Search tags..." 
-                        value={tagSearchTerm} 
-                        onValueChange={setTagSearchTerm} // Update search term state
-                        className="h-9 text-white border-0 ring-0 focus:ring-0 bg-transparent placeholder:text-gray-500"
-                      />
-                      <CommandList>
-                        <CommandEmpty className="py-6 text-center text-sm text-gray-400">No tags found.</CommandEmpty>
-                        <CommandGroup>
-                          {availableTags.map((tag) => (
-                            <CommandItem
-                              key={tag}
-                              value={tag} // Used for filtering by CommandInput
-                              onSelect={() => handleTagSelect(tag)} // Call handler on select
-                              className="text-gray-200 aria-selected:bg-indigo-600/50 aria-selected:text-white cursor-pointer"
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4",
-                                  selectedTags.includes(tag) ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                              {tag}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                {/* Key Filter (Multi-select Popover) */}
+                <AccordionItem value="keys" className="border-b-0 rounded-md bg-neutral-800/50 p-0.5 border border-neutral-700/70">
+                    <AccordionTrigger className="text-sm font-medium text-neutral-200 hover:no-underline px-3 py-2.5 hover:bg-neutral-700/50 rounded-t-md transition-colors">Musical Keys</AccordionTrigger>
+                    <AccordionContent className="pt-2 pb-3 px-3 bg-neutral-800/30 rounded-b-md">
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" role="combobox" className="w-full justify-between h-9 text-xs bg-neutral-700/70 border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100 focus:ring-1 focus:ring-cyan-glow focus:border-cyan-glow">
+                                    {selectedKeys.length > 0 ? `${selectedKeys.length} selected` : "Select keys..."}
+                                    <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0 bg-neutral-800 border-neutral-700 shadow-xl">
+                                <Command className="bg-transparent">
+                                    <CommandInput placeholder="Search keys..." value={keySearchTerm} onValueChange={setKeySearchTerm} className="h-8 text-xs bg-neutral-700/50 border-b border-neutral-600 placeholder:text-neutral-500 text-neutral-200 focus:ring-0 focus:border-cyan-glow" />
+                                    <CommandList>
+                                        <CommandEmpty className="py-4 text-center text-xs text-neutral-500">No keys found.</CommandEmpty>
+                                        <ScrollArea className="max-h-48">
+                                            <CommandGroup>
+                                                {filteredKeys.map((key) => (
+                                                    <CommandItem
+                                                        key={key}
+                                                        value={key}
+                                                        onSelect={() => handleMultiSelectChange(key, 'keys')}
+                                                        className="text-xs text-neutral-300 hover:!bg-cyan-glow/20 hover:!text-cyan-glow aria-selected:!bg-cyan-glow aria-selected:!text-abyss-blue cursor-pointer py-1.5 px-2"
+                                                    >
+                                                        <Check className={cn("mr-2 h-3 w-3", selectedKeys.includes(key) ? "opacity-100" : "opacity-0")} />
+                                                        {key}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </ScrollArea>
+                                    </CommandList>
+                                </Command>
+                            </PopoverContent>
+                        </Popover>
+                        {selectedKeys.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                {selectedKeys.map(key => (
+                                    <Badge key={key} variant="secondary" className="bg-cyan-glow/20 text-cyan-glow hover:bg-cyan-glow/30 text-xs border-cyan-glow/30 px-1.5 py-0.5 cursor-default">
+                                        {key}
+                                        <button onClick={() => handleMultiSelectChange(key, 'keys')} className="ml-1 opacity-70 hover:opacity-100"><X size={10}/></button>
+                                    </Badge>
+                                ))}
+                            </div>
+                        )}
+                    </AccordionContent>
+                </AccordionItem>
+                
+                {/* Tags Filter (Similar to Keys) */}
+                <AccordionItem value="tags" className="border-b-0 rounded-md bg-neutral-800/50 p-0.5 border border-neutral-700/70">
+                    <AccordionTrigger className="text-sm font-medium text-neutral-200 hover:no-underline px-3 py-2.5 hover:bg-neutral-700/50 rounded-t-md transition-colors">Tags</AccordionTrigger>
+                    <AccordionContent className="pt-2 pb-3 px-3 bg-neutral-800/30 rounded-b-md">
+                         <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" role="combobox" className="w-full justify-between h-9 text-xs bg-neutral-700/70 border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100 focus:ring-1 focus:ring-cyan-glow focus:border-cyan-glow">
+                                    {selectedTags.length > 0 ? `${selectedTags.length} selected` : "Select tags..."}
+                                    <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0 bg-neutral-800 border-neutral-700 shadow-xl">
+                                <Command className="bg-transparent">
+                                    <CommandInput placeholder="Search or add tags..." value={tagSearchTerm} onValueChange={setTagSearchTerm} className="h-8 text-xs bg-neutral-700/50 border-b border-neutral-600 placeholder:text-neutral-500 text-neutral-200 focus:ring-0 focus:border-cyan-glow" />
+                                    <CommandList>
+                                        <CommandEmpty className="py-4 text-center text-xs text-neutral-500">
+                                            {tagSearchTerm && !availableTags.some(t => t.toLowerCase() === tagSearchTerm.toLowerCase()) 
+                                                ? <span>No matching tags. Press Enter to add "{tagSearchTerm}"</span> 
+                                                : "No tags found."
+                                            }
+                                        </CommandEmpty>
+                                        <ScrollArea className="max-h-48">
+                                            <CommandGroup>
+                                                {filteredTags.map((tag) => (
+                                                    <CommandItem
+                                                        key={tag}
+                                                        value={tag}
+                                                        onSelect={() => handleTagSelect(tag)}
+                                                        className="text-xs text-neutral-300 hover:!bg-cyan-glow/20 hover:!text-cyan-glow aria-selected:!bg-cyan-glow aria-selected:!text-abyss-blue cursor-pointer py-1.5 px-2"
+                                                    >
+                                                        <Check className={cn("mr-2 h-3 w-3", selectedTags.includes(tag) ? "opacity-100" : "opacity-0")} />
+                                                        {tag}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </ScrollArea>
+                                    </CommandList>
+                                </Command>
+                            </PopoverContent>
+                        </Popover>
+                        {selectedTags.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                {selectedTags.map(tag => (
+                                    <Badge key={tag} variant="secondary" className="bg-magenta-spark/20 text-magenta-spark hover:bg-magenta-spark/30 text-xs border-magenta-spark/30 px-1.5 py-0.5 cursor-default">
+                                        {tag}
+                                        <button onClick={() => handleMultiSelectChange(tag, 'tags')} className="ml-1 opacity-70 hover:opacity-100"><X size={10}/></button>
+                                    </Badge>
+                                ))}
+                            </div>
+                        )}
+                    </AccordionContent>
+                </AccordionItem>
 
-                {/* Display Selected Tags */}
-                {selectedTags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-2">
-                    {selectedTags.map(tag => (
-                      <Badge 
-                        key={tag} 
-                        variant="secondary"
-                        className="flex items-center gap-1 pl-2 pr-0.5 py-0.5 text-xs bg-indigo-500/20 border-indigo-500/30 text-indigo-200"
-                      >
-                        {tag}
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() => handleTagChange(tag, false)}
-                          className="h-4 w-4 p-0 rounded-full hover:bg-indigo-500/40 text-indigo-300 hover:text-white"
-                          aria-label={`Remove tag: ${tag}`}
-                        >
-                          <X size={10} />
-                        </Button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </AccordionContent>
-            </AccordionItem>
+                {/* Moods Filter (Similar to Tags) */}
+                <AccordionItem value="moods" className="border-b-0 rounded-md bg-neutral-800/50 p-0.5 border border-neutral-700/70">
+                    <AccordionTrigger className="text-sm font-medium text-neutral-200 hover:no-underline px-3 py-2.5 hover:bg-neutral-700/50 rounded-t-md transition-colors">Moods</AccordionTrigger>
+                    <AccordionContent className="pt-2 pb-3 px-3 bg-neutral-800/30 rounded-b-md">
+                         <Popover open={moodPopoverOpen} onOpenChange={setMoodPopoverOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" role="combobox" className="w-full justify-between h-9 text-xs bg-neutral-700/70 border-neutral-600 text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100 focus:ring-1 focus:ring-cyan-glow focus:border-cyan-glow">
+                                    {selectedMoods.length > 0 ? `${selectedMoods.length} selected` : "Select moods..."}
+                                    <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0 bg-neutral-800 border-neutral-700 shadow-xl">
+                                <Command className="bg-transparent">
+                                    <CommandInput placeholder="Search moods..." value={moodSearchTerm} onValueChange={setMoodSearchTerm} className="h-8 text-xs bg-neutral-700/50 border-b border-neutral-600 placeholder:text-neutral-500 text-neutral-200 focus:ring-0 focus:border-cyan-glow" />
+                                    <CommandList>
+                                        <CommandEmpty className="py-4 text-center text-xs text-neutral-500">No moods found.</CommandEmpty>
+                                        <ScrollArea className="max-h-48">
+                                            <CommandGroup>
+                                                {filteredMoods.map((mood) => (
+                                                    <CommandItem
+                                                        key={mood}
+                                                        value={mood}
+                                                        onSelect={() => handleMoodSelect(mood)}
+                                                        className="text-xs text-neutral-300 hover:!bg-cyan-glow/20 hover:!text-cyan-glow aria-selected:!bg-cyan-glow aria-selected:!text-abyss-blue cursor-pointer py-1.5 px-2"
+                                                    >
+                                                        <Check className={cn("mr-2 h-3 w-3", selectedMoods.includes(mood) ? "opacity-100" : "opacity-0")} />
+                                                        {mood}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </ScrollArea>
+                                    </CommandList>
+                                </Command>
+                            </PopoverContent>
+                        </Popover>
+                        {selectedMoods.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                {selectedMoods.map(mood => (
+                                    <Badge key={mood} variant="secondary" className="bg-cyan-glow/20 text-cyan-glow hover:bg-cyan-glow/30 text-xs border-cyan-glow/30 px-1.5 py-0.5 cursor-default">
+                                        {mood}
+                                        <button onClick={() => handleMultiSelectChange(mood, 'moods')} className="ml-1 opacity-70 hover:opacity-100"><X size={10}/></button>
+                                    </Badge>
+                                ))}
+                            </div>
+                        )}
+                    </AccordionContent>
+                </AccordionItem>
 
-            {/* Price Filter */}
-            <AccordionItem value="item-5">
-              <AccordionTrigger className="text-base hover:no-underline">Price Range</AccordionTrigger>
-              <AccordionContent className="pt-4 space-y-4">
-                <Slider
-                  value={priceRange}
-                  onValueChange={handlePriceInputChange}
-                  min={0}
-                  max={500}
-                  step={5}
-                  minStepsBetweenThumbs={1}
-                  className="[&>span:first-child]:h-1 [&>span>span]:bg-indigo-500 [&>span>span]:h-1.5 [&>span>span]:w-1.5 [&>span>span]:border-0 [&>span>span:focus-visible]:ring-0 [&>span>span:focus-visible]:ring-offset-0 [&>span>span:focus-visible]:shadow-[0_0_0_3px_rgba(99,102,241,0.5)]"
-                 />
-                 <div className="flex justify-between items-center gap-3">
-                    <div className="flex-1 space-y-1">
-                        <Label htmlFor="min-price" className="text-xs text-gray-400">Min Price ($)</Label>
-                        <Input 
-                            id="min-price"
-                            type="number"
-                            value={priceRange[0]}
-                            onChange={(e) => handlePriceInputChange(0, e.target.value)}
+                {/* Price Range Filter */}
+                <AccordionItem value="price" className="border-b-0 rounded-md bg-neutral-800/50 p-0.5 border border-neutral-700/70">
+                    <AccordionTrigger className="text-sm font-medium text-neutral-200 hover:no-underline px-3 py-2.5 hover:bg-neutral-700/50 rounded-t-md transition-colors">Price Range</AccordionTrigger>
+                    <AccordionContent className="pt-3 pb-3 px-3 space-y-3 bg-neutral-800/30 rounded-b-md">
+                        <Slider
+                            value={priceRange}
+                            onValueChange={setPriceRange} // Continuous update for visual feedback
+                            onValueCommit={handlePriceCommit} // Use commit for final application if needed
                             min={0}
-                            max={priceRange[1]}
-                            step={1}
-                            className="h-8 text-sm bg-white/5 border-white/10 focus:ring-indigo-500/60 focus:border-indigo-500/30"
-                         />
-                     </div>
-                     <div className="flex-1 space-y-1">
-                        <Label htmlFor="max-price" className="text-xs text-gray-400">Max Price ($)</Label>
-                         <Input 
-                            id="max-price"
-                            type="number"
-                            value={priceRange[1]}
-                            onChange={(e) => handlePriceInputChange(1, e.target.value)}
-                            min={priceRange[0]}
-                            max={500}
-                            step={1}
-                            className="h-8 text-sm bg-white/5 border-white/10 focus:ring-indigo-500/60 focus:border-indigo-500/30"
-                         />
-                    </div>
-                 </div>
-              </AccordionContent>
-            </AccordionItem>
+                            max={500} // Example max price
+                            step={5}
+                            minStepsBetweenThumbs={10}
+                            className="[&>span:first-child]:h-1.5 [&>span:first-child]:bg-neutral-700 [&>span>span]:bg-magenta-spark [&>span>span]:h-3 [&>span>span]:w-3 [&>span>span]:border-2 [&>span>span]:border-neutral-900 [&>span>span:focus-visible]:ring-1 [&>span>span:focus-visible]:ring-magenta-spark/50 [&>span>span:focus-visible]:ring-offset-0 [&>span>span:focus-visible]:shadow-[0_0_0_2px_theme(colors.neutral.900),0_0_0_4px_theme(colors.magenta-spark / 0.4)]"
+                        />
+                        <div className="flex justify-between items-center gap-2">
+                            <div className="relative flex-1">
+                                <DollarSign size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-500"/>
+                                <Input type="number" value={priceRange[0]} onChange={(e) => handlePriceInputChange(0, e.target.value)} className="h-8 text-xs text-center pl-6 bg-neutral-700/70 border-neutral-600 placeholder:text-neutral-500 text-neutral-200 focus:ring-cyan-glow focus:border-cyan-glow" />
+                            </div>
+                            <span className="text-neutral-500 text-xs">to</span>
+                            <div className="relative flex-1">
+                                <DollarSign size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-500"/>
+                                <Input type="number" value={priceRange[1]} onChange={(e) => handlePriceInputChange(1, e.target.value)} className="h-8 text-xs text-center pl-6 bg-neutral-700/70 border-neutral-600 placeholder:text-neutral-500 text-neutral-200 focus:ring-cyan-glow focus:border-cyan-glow" />
+                            </div>
+                        </div>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
+        </ScrollArea>
 
-          </Accordion>
-
-          {/* Apply Filters Button */}
-          <Button
-            onClick={handleApplyFilters}
-            className="w-full mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
-          >
-            Apply Filters
-          </Button>
+        {/* Footer with Apply Button */}
+        <div className="p-4 border-t border-neutral-700 mt-auto">
+            <Button onClick={handleApplyFilters} className="w-full bg-cyan-glow text-abyss-blue hover:bg-cyan-glow/80 shadow-glow-cyan-md text-sm font-semibold">
+                Apply Filters
+            </Button>
         </div>
-      </div>
-    </aside>
+    </div>
   );
 } 

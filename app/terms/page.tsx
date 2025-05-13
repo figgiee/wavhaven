@@ -43,9 +43,9 @@ export default function TermsPage() {
         </li>
         <li>
           <strong>License:</strong> The permission granted by a Producer to a Customer to use Content under specific terms and conditions, as selected by the Customer and defined on our{' '}
-          {/* <Link href="/licensing-info" className="text-primary hover:underline"> */}
-            Licensing Info {/* [Link to Licensing Info] */}
-          {/* </Link> */}
+          <Link href="/licensing" className="text-primary hover:underline">
+            Licensing Info
+          </Link>
           {' '}page and the specific product listing.
         </li>
       </ul>
@@ -85,8 +85,8 @@ export default function TermsPage() {
           <ul className="list-disc list-inside ml-6 mt-2 space-y-1">
             <li>You own or have all necessary rights, licenses, consents, and permissions to the Content you upload.</li>
             <li>Your Content does not infringe upon any third-party rights (including copyright, trademark, privacy, or publicity rights).</li>
-            <li>Your Content complies with our {/* <Link href="/submission-guidelines" className="text-primary hover:underline"> */}Submission Guidelines{/* </Link> */} {/* [Link to Submission Guidelines] */} and does not contain any illegal, defamatory, or harmful material.</li>
-            <li>You have obtained all necessary clearances for any samples used in your Content, as outlined in our {/* <Link href="/submission-guidelines" className="text-primary hover:underline"> */}Submission Guidelines{/* </Link> */} {/* [Link to Submission Guidelines] */}.</li>
+            <li>Your Content complies with our <Link href="/guidelines" className="text-primary hover:underline">Submission Guidelines</Link> and does not contain any illegal, defamatory, or harmful material.</li>
+            <li>You have obtained all necessary clearances for any samples used in your Content, as outlined in our <Link href="/guidelines" className="text-primary hover:underline">Submission Guidelines</Link>.</li>
           </ul>
         </li>
         <li>
@@ -103,7 +103,7 @@ export default function TermsPage() {
        <h2 className="text-2xl font-semibold mt-8 mb-4">4. Customer Terms</h2>
        <ul className="list-disc list-inside mb-6 space-y-3">
         <li>
-          <strong>Purchasing Licenses:</strong> When you purchase a license for Content, you are acquiring specific usage rights as defined by the selected license type (see {/* <Link href="/licensing-info" className="text-primary hover:underline"> */}Licensing Info{/* </Link> */} {/* [Link to Licensing Info] */}) and any additional terms specified by the Producer on the listing. You are not purchasing ownership of the Content&apos;s copyright.
+          <strong>Purchasing Licenses:</strong> When you purchase a license for Content, you are acquiring specific usage rights as defined by the selected license type (see <Link href="/licensing" className="text-primary hover:underline">Licensing Info</Link>) and any additional terms specified by the Producer on the listing. You are not purchasing ownership of the Content&apos;s copyright.
         </li>
         <li>
           <strong>License Scope:</strong> You agree to use the Content strictly within the scope of the purchased license. Unauthorized use, sharing, resale of the raw Content, or exceeding license limitations is prohibited.
@@ -122,10 +122,10 @@ export default function TermsPage() {
           <strong>Payment Processing:</strong> Customer payments are processed through our third-party payment processor ({/* [e.g., Stripe] */}). By making a purchase, you agree to their terms and conditions. Wavhaven does not store your full payment card details.
         </li>
         <li>
-          <strong>Commissions:</strong> Wavhaven charges Producers a commission fee on each successful license sale, as outlined in our {/* <Link href="/producer-faq" className="text-primary hover:underline"> */}Producer FAQ or separate fee schedule{/* </Link> */} {/* [Link to Producer FAQ or separate fee schedule] */}.
+          <strong>Commissions:</strong> Wavhaven charges Producers a commission fee on each successful license sale, as outlined in our <Link href="/faq/producer" className="text-primary hover:underline">Producer FAQ</Link>.
         </li>
         <li>
-          <strong>Producer Payouts:</strong> Payouts to Producers are made according to the schedule and methods described in our {/* <Link href="/producer-faq" className="text-primary hover:underline"> */}Producer FAQ{/* </Link> */} {/* [Link to Producer FAQ] */}. Producers are responsible for providing accurate payout information and meeting any minimum payout thresholds.
+          <strong>Producer Payouts:</strong> Payouts to Producers are made according to the schedule and methods described in our <Link href="/faq/producer" className="text-primary hover:underline">Producer FAQ</Link>. Producers are responsible for providing accurate payout information and meeting any minimum payout thresholds.
         </li>
         <li>
           <strong>Taxes:</strong> Users are responsible for determining and paying any applicable taxes associated with their purchases or earnings on the Platform.
@@ -141,7 +141,7 @@ export default function TermsPage() {
           <strong>User Content IP:</strong> Producers retain ownership of their Content. Customers obtain license rights as described herein.
         </li>
         <li>
-          <strong>Copyright Policy (DMCA):</strong> Wavhaven respects intellectual property rights. If you believe your copyright has been infringed, please follow the procedure outlined in our {/* <Link href="/dmca" className="text-primary hover:underline"> */}DMCA/Copyright Policy Page{/* </Link> */} {/* [Link to DMCA/Copyright Policy Page] */}.
+          <strong>Copyright Policy (DMCA):</strong> Wavhaven respects intellectual property rights. If you believe your copyright has been infringed, please follow the procedure outlined in our <Link href="/support" className="text-primary hover:underline">Support Page</Link> (DMCA/Copyright inquiries).
         </li>
       </ul>
 

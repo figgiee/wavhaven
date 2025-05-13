@@ -90,6 +90,8 @@ const ReplyForm: React.FC<ReplyFormProps> = ({ beatId, parentId, onReplySuccess,
     );
 };
 
+const MAX_COMMENTS_INITIAL = 5;
+
 export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
     const { userId: clerkUserId, isSignedIn } = useAuth();
     const [comments, setComments] = useState<CommentWithDetails[]>([]);
@@ -141,9 +143,28 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
 
     // Handler called when a reply is successfully submitted via ReplyForm
     const handleReplySuccess = (newReply: CommentWithDetails) => {
-        // TODO: Add logic here to update the state to show the new reply
-        // For now, just close the reply form
-        console.log("New Reply Added:", newReply); // We'll integrate display later
+        setComments(prevComments =>
+            prevComments.map(comment => {
+                // If the current comment is the parent of the new reply
+                if (comment.id === newReply.parentId) {
+                    return {
+                        ...comment,
+                        replies: [...(comment.replies || []), newReply].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+                    };
+                } else if (comment.replies && comment.replies.some(reply => reply.id === newReply.parentId)) {
+                    // If the new reply is a reply to one of the existing replies (nested reply)
+                    return {
+                        ...comment,
+                        replies: comment.replies.map(reply =>
+                            reply.id === newReply.parentId
+                                ? { ...reply, replies: [...(reply.replies || []), newReply].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) }
+                                : reply
+                        ),
+                    };
+                }
+                return comment;
+            })
+        );
         setReplyingTo(null);
     };
 
@@ -156,8 +177,8 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
     };
 
     return (
-        <Card className="bg-background/70 border-border/50 backdrop-blur-sm shadow-md">
-            <CardHeader className="border-b border-border/50 pb-3">
+        <Card className="bg-background/70 border-[hsl(var(--border))]/50 backdrop-blur-sm shadow-md">
+            <CardHeader className="border-b border-[hsl(var(--border))]/50 pb-3">
                 <CardTitle className="text-base font-medium flex items-center gap-2 text-foreground">
                     <MessageSquare className="w-4 h-4 text-muted-foreground" />
                     Comments
@@ -179,7 +200,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
                             {comments.map((comment) => (
                                 <li key={comment.id} className="py-3 first:pt-0 last:pb-0">
                                     <div className="flex space-x-3">
-                                        <Avatar className="h-9 w-9 border border-border/40 flex-shrink-0">
+                                        <Avatar className="h-9 w-9 border border-[hsl(var(--border))]/40 flex-shrink-0">
                                             <AvatarImage src={(comment.user as any).imageUrl ?? undefined} alt={comment.user.username ?? comment.user.name ?? 'User'} />
                                             <AvatarFallback className="text-xs">{getInitials(comment.user.name ?? comment.user.username)}</AvatarFallback>
                                         </Avatar>
@@ -230,7 +251,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
                 </div>
             </CardContent>
             {/* Footer with Top-Level Comment Form */}
-            <CardFooter className="border-t border-border/50 p-4">
+            <CardFooter className="border-t border-[hsl(var(--border))]/50 p-4">
                 {isSignedIn ? (
                     <form onSubmit={handleAddComment} className="w-full space-y-2">
                         <Textarea

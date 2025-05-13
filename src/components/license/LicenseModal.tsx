@@ -58,10 +58,11 @@ export function LicenseModal({
             fetchLicensesForTrack(String(trackId)) // Ensure trackId is string for server action
                 .then(fetchedLicenses => {
                     setLicenses(fetchedLicenses);
-                    // Default selection (e.g., first or cheapest)
+                    // Default selection: cheapest license
                     if (fetchedLicenses.length > 0) {
-                        // TODO: Implement logic to select cheapest or default
-                        setSelectedLicenseId(fetchedLicenses[0].id);
+                        // Sort licenses by price (ascending)
+                        const sortedLicenses = [...fetchedLicenses].sort((a, b) => a.price - b.price);
+                        setSelectedLicenseId(sortedLicenses[0].id); // Select the first one (cheapest)
                     }
                 })
                 .catch(err => {

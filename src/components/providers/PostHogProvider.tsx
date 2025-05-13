@@ -74,28 +74,29 @@ function SuspendedPostHogPageView() {
 
 // Main Exported Provider
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    if (posthogKey && posthogHost) {
-      posthog.init(posthogKey, {
-        api_host: posthogHost,
-        capture_pageview: false, // We'll capture pageviews manually
-        capture_pageleave: true
-      })
-    }
-  }, [])
+  // useEffect(() => {
+  //   if (posthogKey && posthogHost) {
+  //     posthog.init(posthogKey, {
+  //       api_host: posthogHost,
+  //       capture_pageview: false, // We'll capture pageviews manually
+  //       capture_pageleave: true
+  //     })
+  //   }
+  // }, [])
 
-  if (!posthogKey || !posthogHost) {
-    console.warn('PostHog keys not configured. Analytics disabled.')
-    return <>{children}</>
-  }
+  // if (!posthogKey || !posthogHost) {
+  //   console.warn('PostHog keys not configured. Analytics disabled.')
+  //   return <>{children}</>
+  // }
 
-  return (
-    <PHProvider client={posthog}>
-      {/* Auth Handler needs to be inside the provider to use usePostHog */}
-      <PostHogAuthHandler />
-      {/* Wrap the pageview handler in Suspense as per docs */}
-      <SuspendedPostHogPageView />
-      {children}
-    </PHProvider>
-  )
+  // return (
+  //   <PHProvider client={posthog}>
+  //     {/* Auth Handler needs to be inside the provider to use usePostHog */}
+  //     <PostHogAuthHandler />
+  //     {/* Wrap the pageview handler in Suspense as per docs */}
+  //     <SuspendedPostHogPageView />
+  //     {children}
+  //   </PHProvider>
+  // )
+  return <>{children}</>; // Directly return children to disable PostHog
 }

@@ -5,7 +5,9 @@ import prisma from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { getInternalUserId } from '@/lib/userUtils';
 import { createSignedUrl } from '@/lib/storage';
-import { verifyToken } from '@clerk/backend';
+import { clerkClient, verifyToken } from '@clerk/nextjs/server';
+import type { OrderStatus } from '@prisma/client';
+import { stripe } from '@/lib/stripe';
 
 // Define Zod Schema
 const downloadSchema = z.object({

@@ -73,7 +73,7 @@ export const getUserTracksByUsername = async (
     }
 
     // 2. Fetch the user's published tracks with pagination
-    const tracks = await prisma.track.findMany({
+    const tracksData = await prisma.track.findMany({
       where: {
         producerId: user.id,
         isPublished: true, // Assuming `isPublished` field exists based on T6/T33
@@ -97,8 +97,18 @@ export const getUserTracksByUsername = async (
       },
     });
 
-    console.log(`[Server Action] Found ${tracks.length} tracks for ${username}`);
-    return tracks;
+    console.log(`[Server Action] Found ${tracksData.length} tracks for ${username}`);
+    
+    // Convert Decimal prices to numbers for each license
+    const tracksWithConvertedPrices = tracksData.map(track => ({
+      ...track,
+      licenses: track.licenses.map(license => ({
+        ...license,
+        price: Number(license.price), // Convert Decimal to number
+      })),
+    }));
+
+    return tracksWithConvertedPrices;
 
   } catch (error) {
     console.error(`[Server Action] Error fetching tracks for ${username}:`, error);

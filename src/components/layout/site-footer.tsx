@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Twitter, Instagram, Facebook, Send } from 'lucide-react'; // Using Send for SoundCloud as placeholder
+import { AnimatedLogo } from './site-header'; // Re-use the logo
 
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -19,31 +20,42 @@ interface FooterSection {
   links: FooterLink[];
 }
 
-// Data for footer links - replace placeholders with actual URLs
-const footerSections: FooterSection[] = [
+// Updated data for footer links
+const footerSectionsData: FooterSection[] = [
   {
-    title: 'WAVHaven',
+    title: 'Company',
     links: [
-      { href: '/explore?type=beat', label: 'Explore' },
-      { href: '/about', label: 'About Us' }, // TODO: Add about page URL
-      { href: '/blog', label: 'Blog' }, // TODO: Add blog URL
+      { href: '/about', label: 'About Wavhaven' },
+      { href: '/blog', label: 'Blog' },
+      { href: '/careers', label: 'Careers' }, // Placeholder
+      { href: '/press', label: 'Press' }, // Placeholder
     ],
   },
   {
     title: 'For Producers',
     links: [
-      { href: '/upload', label: 'Start Selling' },
-      { href: '/faq/producer', label: 'Producer FAQ' }, // TODO: Add producer FAQ URL
-      { href: '/guidelines', label: 'Submission Guidelines' }, // TODO: Add guidelines URL
+      { href: '/upload', label: 'Start Selling Beats' },
+      { href: '/producer/dashboard', label: 'Producer Dashboard' },
+      { href: '/guidelines', label: 'Submission Guidelines' },
+      { href: '/faq/producer', label: 'Producer FAQ' },
     ],
   },
   {
     title: 'For Customers',
     links: [
-      { href: '/faq/customer', label: 'Customer FAQ' }, // TODO: Add customer FAQ URL
-      { href: '/licensing', label: 'Licensing Info' }, // TODO: Add licensing URL
-      { href: '/support', label: 'Contact Support' }, // TODO: Add support URL
-      { href: '/returns', label: 'Returns & Refunds' }, // TODO: Add returns URL
+      { href: '/explore?type=beat', label: 'Explore Beats' },
+      { href: '/licensing', label: 'Licensing Info' },
+      { href: '/faq/customer', label: 'Customer FAQ' },
+      { href: '/support', label: 'Contact Support' },
+    ],
+  },
+  {
+    title: 'Resources',
+    links: [
+      { href: '/terms', label: 'Terms of Service' },
+      { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/cookies', label: 'Cookie Policy' },
+      { href: '/sitemap', label: 'Sitemap' }, // Placeholder
     ],
   },
 ];
@@ -62,113 +74,73 @@ export function SiteFooter({ className }: { className?: string }) {
 
   return (
     <footer className={cn(
-        // --- Reduced top margin (mt-24) --- 
-        "relative mt-24 border-t border-white/5", 
-        "bg-background", // Simplified background for both modes, relies on layout bg
+        "relative border-t border-neutral-700/50 bg-abyss-blue pt-16 pb-12 sm:pt-20 sm:pb-16",
         className
     )}>
-      {/* --- Reduced overall padding (py-8) --- */}
-      <div className="relative z-10 max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* --- Reduced grid gap, use text-xs --- */} 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 text-xs">
-           {footerSections.map((section) => (
-            <div key={section.title}>
-              {/* --- Adjusted heading margin --- */} 
-              <h4 className="font-semibold text-foreground mb-3">{section.title}</h4>
-              {/* --- Reduced list spacing --- */} 
-              <ul className="space-y-2">
-                {section.links.map((link) => (
-                  <li key={link.label}>
-                    {/* --- Ensure text is gray and smaller --- */}
-                    <Link href={link.href} className="text-gray-400 hover:text-white transition-colors">
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8"> {/* Outer grid for logo vs links area */}
+          {/* Column 1: Logo & Copyright */}
+          <div className="lg:col-span-1 space-y-4">
+            <AnimatedLogo />
+            <p className="text-sm text-neutral-400">
+              &copy; {currentYear} WAVHAVEN.
+              <br />
+              All rights reserved.
+            </p>
+          </div>
 
-          <div>
-            {/* --- Adjusted heading margin --- */} 
-            <h4 className="font-semibold text-foreground mb-3">Stay Connected</h4>
-            {/* --- Reduced social icon margin --- */} 
-            <ul className="flex space-x-4 mb-4">
-              <li>
-                <a href="#" aria-label="Twitter" className="text-gray-400 hover:text-white transition-colors">
-                  <Twitter size={18} /> {/* Slightly smaller icons */}
-                </a>
-              </li>
-              <li>
-                <a href="#" aria-label="Instagram" className="text-gray-400 hover:text-white transition-colors">
-                  <Instagram size={18} />
-                </a>
-              </li>
-              <li>
-                <a href="#" aria-label="Facebook" className="text-gray-400 hover:text-white transition-colors">
-                  <Facebook size={18} />
-                </a>
-              </li>
-               <li>
-                 <a href="#" aria-label="SoundCloud" className="text-gray-400 hover:text-white transition-colors">
-                   <Send size={18} />
-                 </a>
-               </li>
-            </ul>
-
-            <div>
-              {/* --- Simplified subscribe text --- */} 
-              <p className="text-gray-400 text-xs mb-2">Subscribe for updates.</p>
-              <form className="flex" onSubmit={handleSubscribe}>
-                <label htmlFor="newsletter-email" className="sr-only">Email address</label>
-                <Input
-                  type="email"
-                  id="newsletter-email"
-                  name="email"
-                  placeholder="Enter your email"
-                  required
-                  // --- Adjusted input styling (smaller?) --- 
-                  className="flex-1 px-2 py-1.5 text-xs rounded-r-none"
-                  size="sm" // Use smaller size variant if available
-                />
-                <Button
-                  type="submit"
-                  // --- Adjusted button styling (smaller?) --- 
-                  className="px-2.5 py-1.5 text-xs rounded-l-none transition-colors"
-                  size="sm" // Use smaller size variant
-                 >
-                   Subscribe
-                 </Button>
-              </form>
-            </div>
+          {/* Column 2 (spanning 4 on lg): Link Sections Container */}
+          <div className="lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
+            {footerSectionsData.map((section) => (
+              <div key={section.title}> {/* Each link section is a grid item here */}
+                <h3 className="text-base font-semibold text-neutral-100 mb-4">{section.title}</h3>
+                <ul className="space-y-2.5">
+                  {section.links.map((link) => (
+                    <li key={link.label}>
+                      <Link 
+                        href={link.href} 
+                        className="text-sm text-neutral-400 hover:text-cyan-glow transition-colors duration-150"
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* --- Reduced margin-top, adjusted border color --- */}
-        <div className="mt-12 pt-6 border-t border-white/5">
-          <div className="text-center">
-            {/* --- Kept text small --- */}
-            <p className="text-gray-500 text-xs mb-2">
-              &copy; {currentYear} WavHaven. All rights reserved.
-            </p>
-            {/* --- Reduced gap for legal links --- */}
-            <ul className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
-              <li>
-                <Link href="/terms" className="text-gray-500 hover:text-gray-300 transition-colors">
-                  Terms
-                </Link> {/* Shortened text */}
-              </li>
-              <li>
-                <Link href="/privacy" className="text-gray-500 hover:text-gray-300 transition-colors">
-                  Privacy
-                </Link> {/* Shortened text */}
-              </li>
-              <li>
-                <Link href="/cookies" className="text-gray-500 hover:text-gray-300 transition-colors">
-                  Cookies
-                </Link> {/* Shortened text */}
-              </li>
-            </ul>
+        {/* Newsletter & Social Links - a new row below the columns */}
+        <div className="mt-12 pt-8 border-t border-neutral-700/50 flex flex-col sm:flex-row justify-between items-center">
+          <div className="mb-6 sm:mb-0">
+            <h3 className="text-base font-semibold text-neutral-100 mb-2">Stay Updated</h3>
+            <form onSubmit={handleSubscribe} className="flex items-center gap-2 max-w-sm">
+              <Input 
+                type="email" 
+                name="email" 
+                placeholder="Enter your email" 
+                className="bg-neutral-800 border-neutral-700 placeholder-neutral-500 text-sm flex-grow" 
+                required 
+              />
+              <Button type="submit" variant="luminous" size="sm" className="px-4">
+                <Send size={16} className="mr-2" />
+                Subscribe
+              </Button>
+            </form>
+          </div>
+
+          <div className="flex space-x-5">
+            <Link href="#" aria-label="Facebook" className="text-neutral-400 hover:text-cyan-glow transition-colors">
+              <Facebook size={20} />
+            </Link>
+            <Link href="#" aria-label="Twitter" className="text-neutral-400 hover:text-cyan-glow transition-colors">
+              <Twitter size={20} />
+            </Link>
+            <Link href="#" aria-label="Instagram" className="text-neutral-400 hover:text-cyan-glow transition-colors">
+              <Instagram size={20} />
+            </Link>
+            {/* Add other social icons like YouTube, Twitch if needed */}
           </div>
         </div>
       </div>

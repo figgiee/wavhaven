@@ -5,77 +5,82 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 const licenseTypes = [
   {
     name: "Basic Lease (MP3)",
-    files: "MP3",
-    streaming: "100,000", // Placeholder
-    sales: "2,000", // Placeholder
-    performances: "Limited",
-    video: "1 Video (Limited Monet.)",
+    files: "Tagged MP3",
+    streaming: "100,000 Streams (Audio & Video)",
+    sales: "2,000 Units (Downloads/Physical)",
+    performances: "Non-Profit Live Performances",
+    video: "1 Music Video (Non-Monetized Online)",
     exclusivity: "No",
-    credit: "Yes",
-    price: "$",
+    credit: "Producer Must Be Credited",
+    price: "$ (Typical: $19 - $30)", // Price indication
     description: [
-      "Ideal for demos, smaller projects, and non-profit use.",
-      "Grants limited rights for distribution and streaming."
+      "Ideal for demos, mixtapes, and non-commercial projects.",
+      "Grants limited usage rights for online streaming and small-scale distribution.",
+      "Beat remains available for others to license."
     ]
   },
   {
-    name: "Premium Lease (WAV)",
+    name: "Standard Lease (WAV)",
     files: "MP3, WAV",
-    streaming: "500,000", // Placeholder
-    sales: "10,000", // Placeholder
-    performances: "Allowed",
-    video: "1 Video (Monet. Allowed)",
+    streaming: "500,000 Streams (Audio & Video)",
+    sales: "5,000 Units (Downloads/Physical)",
+    performances: "Paid Live Performances Allowed",
+    video: "1 Music Video (Monetization Allowed Online)",
     exclusivity: "No",
-    credit: "Yes",
-    price: "$$",
+    credit: "Producer Must Be Credited",
+    price: "$$ (Typical: $40 - $70)", // Price indication
     description: [
-      "Higher quality audio and increased usage limits.",
-      "Suitable for independent releases and music videos."
+      "High-quality WAV file included for better audio fidelity.",
+      "Increased usage limits suitable for independent releases and monetized online videos.",
+      "Beat remains available for others to license."
     ]
   },
   {
-    name: "Trackout Lease (Stems)",
-    files: "MP3, WAV, Stems",
-    streaming: "1,000,000", // Placeholder
-    sales: "Unlimited", // Placeholder
-    performances: "Allowed",
-    video: "Unlimited Videos",
+    name: "Premium Lease (Trackouts)",
+    files: "MP3, WAV, Trackout Stems",
+    streaming: "1,000,000 Streams (Audio & Video)",
+    sales: "10,000 Units (Downloads/Physical)",
+    performances: "Paid Live Performances Allowed",
+    video: "Unlimited Music Videos (Monetization Allowed Online)",
     exclusivity: "No",
-    credit: "Yes",
-    price: "$$$",
+    credit: "Producer Must Be Credited",
+    price: "$$$ (Typical: $70 - $150)", // Price indication
     description: [
-      "Includes individual track files (stems) for full mixing control.",
-      "Best for professional mixing/mastering and higher distribution needs."
+      "Includes individual track files (stems) for professional mixing and mastering.",
+      "Higher usage limits for serious artists planning wider distribution.",
+      "Beat remains available for others to license."
     ]
   },
   {
     name: "Unlimited Lease",
-    files: "MP3, WAV, [Stems?]", // Confirm if stems included
-    streaming: "Unlimited",
-    sales: "Unlimited",
-    performances: "Allowed",
-    video: "Unlimited Videos",
+    files: "MP3, WAV, Trackout Stems",
+    streaming: "Unlimited Streams (Audio & Video)",
+    sales: "Unlimited Units (Downloads/Physical)",
+    performances: "Paid Live Performances Allowed",
+    video: "Unlimited Music Videos (Monetization Allowed Online)",
     exclusivity: "No",
-    credit: "Yes",
-    price: "$$$$",
+    credit: "Producer Must Be Credited",
+    price: "$$$$ (Typical: $150 - $300+)", // Price indication
     description: [
       "Maximum usage rights without exclusivity.",
-      "Suitable for major releases and extensive commercial use."
+      "Best for artists expecting significant reach and commercial use, without needing the beat taken off the market.",
+      "Beat remains available for others to license."
     ]
   },
   {
     name: "Exclusive Rights",
-    files: "MP3, WAV, Stems",
-    streaming: "Unlimited",
-    sales: "Unlimited",
-    performances: "Allowed",
-    video: "Unlimited Videos",
+    files: "MP3, WAV, Trackout Stems",
+    streaming: "Unlimited Streams",
+    sales: "Unlimited Units",
+    performances: "Paid Live Performances Allowed",
+    video: "Unlimited Music Videos (Monetization Allowed Online)",
     exclusivity: "Yes",
-    credit: "Yes (Negotiable)",
-    price: "$$$$$",
+    credit: "Producer Must Be Credited (Often negotiable)",
+    price: "$$$$$ (Contact Producer)", // Price indication
     description: [
-      "Grants sole ownership of usage rights; beat removed from sale.",
-      "Requires direct negotiation/contract. For serious artists/labels."
+      "Grants you exclusive rights to use the beat. The beat will be removed from sale on Wavhaven.",
+      "Ideal for artists or labels requiring sole usage for major releases.",
+      "Ownership of the original composition typically remains with the producer, but you gain exclusive usage rights."
     ]
   },
 ];
@@ -111,10 +116,10 @@ export default function LicensingPage() {
                   <li><strong>Video Rights:</strong> {license.video}</li>
                   <li><strong>Exclusivity:</strong> {license.exclusivity}</li>
                   <li><strong>Credit Required:</strong> {license.credit}</li>
-                  {/* Price indication removed, focus on features */} 
+                  {/* Price indication can be shown here if desired, e.g., <p><strong>Typical Price:</strong> {license.price}</p> */}
                 </ul>
                 {license.name === "Exclusive Rights" && (
-                  <p className="mt-2 text-xs italic">Note: Exclusive sales often require direct communication/contract between buyer and producer, potentially facilitated by Wavhaven. {/* TODO: Clarify platform role */}</p>
+                  <p className="mt-2 text-xs italic">Note: For Exclusive Rights, Wavhaven helps connect the buyer and producer. The final agreement and transaction are typically handled externally between the parties.</p>
                 )}
               </div>
             </div>
@@ -133,16 +138,21 @@ export default function LicensingPage() {
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-gray-700/50 text-sm">
-              {[ 'Files', 'Streaming Limit', 'Sales Limit', 'Performances', 'Video Rights', 'Exclusivity', 'Credit Required', 'Price (Approx)'].map((feature) => (
-                <TableRow key={feature} className="hover:bg-gray-700/20">
-                  <TableCell className="px-4 py-3 font-medium text-white whitespace-nowrap">{feature}</TableCell>
-                  {licenseTypes.map(lt => (
-                    <TableCell key={lt.name} className="px-4 py-3 text-gray-300 whitespace-nowrap">
-                      {lt[feature.toLowerCase().replace(/ /g, '').replace('(approx)', '') as string] ?? '-'}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
+              {/* Define the features in the order they appear in the licenseTypes objects for consistent mapping */}
+              {['files', 'streaming', 'sales', 'performances', 'video', 'exclusivity', 'credit', 'price'].map((featureKey) => {
+                // Create a display-friendly feature name
+                const featureName = featureKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).replace('price', 'Price (Approx)').replace('streaming', 'Streaming Limit').replace('sales', 'Sales Limit');
+                return (
+                  <TableRow key={featureKey} className="hover:bg-gray-700/20">
+                    <TableCell className="px-4 py-3 font-medium text-white whitespace-nowrap">{featureName}</TableCell>
+                    {licenseTypes.map(lt => (
+                      <TableCell key={lt.name} className="px-4 py-3 text-gray-300 whitespace-nowrap">
+                        {(lt as any)[featureKey] ?? '-'}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

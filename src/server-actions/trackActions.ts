@@ -2400,9 +2400,17 @@ export async function getFeaturedTracks(
 ): Promise<TrackSearchResult[]> {
 	// console.log(`[getFeaturedTracks] Fetching ${limit} featured tracks.`);
 
-	const BUCKET_NAME = "wavhaven-tracks"; // Define BUCKET_NAME
+	const BUCKET_NAME = "wavhaven-tracks";
 
 	try {
+		// Diagnostic: Log all published tracks first -- REMOVE THIS BLOCK
+		// const allPublishedTracksForDebug = await prisma.track.findMany({
+		// 	where: { isPublished: true },
+		// 	select: { id: true, title: true, createdAt: true },
+		// 	orderBy: { createdAt: 'desc' }
+		// });
+		// console.log(`[getFeaturedTracks - DEBUG] Found ${allPublishedTracksForDebug.length} total published tracks. Titles:`, allPublishedTracksForDebug.map(t => t.title).join(', '));
+
 		const tracksData = await prisma.track.findMany({
 			where: {
 				isPublished: true,
@@ -2410,7 +2418,7 @@ export async function getFeaturedTracks(
 			orderBy: {
 					createdAt: "desc",
 			},
-			take: limit,
+				take: limit,
 			select: {
 				id: true,
 				title: true,
@@ -2447,7 +2455,7 @@ export async function getFeaturedTracks(
 			},
 		});
 
-		// console.log(`[getFeaturedTracks] Found ${tracksData.length} tracks in DB.`);
+		console.log(`[getFeaturedTracks] Found ${tracksData.length} tracks in DB after prisma.findMany (limit applied: ${limit}).`);
 
 		const mappedTracks = tracksData.map((track: FeaturedTrackData) => {
 			const mainAudioPath = track.trackFiles?.find((f: { fileType: TrackFileType }) => 

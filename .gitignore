@@ -74,6 +74,8 @@ tasks/
 # Test Reports
 # playwright-report/
 # test-results/
+playwright-screenshots/
+tests-e2e/
 
 # Supabase Temp
 supabase/.temp/
@@ -96,6 +98,7 @@ page-fixed.tsx
 
 # Generated Reports
 scripts/task-complexity-report.json
+scripts/prd.txt
 
 # Other config/notes
 .windsurfrules

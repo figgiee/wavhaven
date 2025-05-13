@@ -15,21 +15,27 @@ import { PlaybackControls } from './PlaybackControls';
 import { ProgressBar } from './ProgressBar';
 import { VolumeControl } from './VolumeControl';
 import { Button } from '@/components/ui/button';
-import { Repeat, Repeat1, Shuffle } from 'lucide-react';
+import { Repeat, Repeat1, Shuffle, ListMusic } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
   TooltipProvider,
 } from "@/components/ui/tooltip"
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { QueueDisplay } from './QueueDisplay';
 
 // Define constants for visualization
 const FFT_SIZE = 256; // Smaller FFT size for less detail, better performance
 const BAR_WIDTH = 3;
 const BAR_GAP = 2;
-const BAR_COLOR = '#a78bfa'; // Tailwind violet-400
+const BAR_COLOR = '#00E0FF'; // Changed to cyan-glow hex
 
-export const AudioPlayerContainer: React.FC = () => {
+export function AudioPlayerContainer() {
   const {
     currentTrack,
     isPlaying,
@@ -49,6 +55,9 @@ export const AudioPlayerContainer: React.FC = () => {
     toggleShuffle,
     setLoading,
     setError,
+    queue, // Access queue for next/prev track display
+    currentIndexInQueue: currentTrackIndex, // Access current track index
+    removeFromQueue, // Get remove action from store
   } = usePlayerStore();
 
   const howlRef = useRef<Howl | null>(null);
@@ -63,6 +72,9 @@ export const AudioPlayerContainer: React.FC = () => {
 
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
+
+  // Determine visibility: show player when a track is selected
+  const isPlayerVisible = Boolean(currentTrack);
 
   // --- Visualization Setup ---
   const setupVisualization = useCallback(() => {
@@ -254,7 +266,7 @@ export const AudioPlayerContainer: React.FC = () => {
       const newHowl = new Howl({
         src: [currentTrack.audioSrc],
         html5: true,
-        volume: volume / 100,
+        volume: volume,
         mute: isMuted,
         loop: loopMode === 'one',
         onload: () => {
@@ -401,10 +413,11 @@ export const AudioPlayerContainer: React.FC = () => {
 
   // --- Sync Volume/Mute -> Howler ---
   useEffect(() => {
-    if (!howlRef.current) return;
-    // Howler.volume(volume / 100); // Adjust global volume (optional)
-    howlRef.current.volume(volume / 100);
-    howlRef.current.mute(isMuted);
+    const howl = howlRef.current;
+    if (howl) {
+      howl.mute(isMuted);
+      howl.volume(volume);
+    }
   }, [volume, isMuted]);
 
   // --- Sync Loop Mode -> Howler ---
@@ -442,76 +455,122 @@ export const AudioPlayerContainer: React.FC = () => {
     return null;
   }
 
+  // Calculate next and previous track titles for tooltips (simplified example)
+  const nextTrackTitle = queue.length > 0 && currentTrackIndex !== null && currentTrackIndex < queue.length - 1 ? queue[currentTrackIndex + 1].title : "None";
+  const prevTrackTitle = queue.length > 0 && currentTrackIndex !== null && currentTrackIndex > 0 ? queue[currentTrackIndex - 1].title : "None";
+
   return (
-    // Add TooltipProvider if any sub-components use tooltips
-    <TooltipProvider>
-      <div
-        className={cn(
-          "fixed bottom-4 left-1/2 -translate-x-1/2",
-          "w-[95%] max-w-4xl", // Slightly wider for viz
-          "h-24", // Standard height
-          "rounded-xl",
-          "border border-neutral-800",
-          "bg-neutral-900/80 backdrop-blur-lg",
-          "shadow-2xl",
-          "transition-opacity duration-300 ease-in-out",
-          "z-50" // Ensure it's above other content
-        )}
-      >
-        <div className="grid h-full grid-cols-12 items-center gap-2 sm:gap-4 px-4">
-            {/* Track Info (Smaller Width) */}
-            <div className="col-span-3 lg:col-span-2">
-                <TrackDisplay track={currentTrack} isLoading={isLoading} />
-            </div>
-
-            {/* Controls & Progress (Larger Width) */}
-            <div className="col-span-6 lg:col-span-5 flex flex-col items-center justify-center gap-1">
-                <PlaybackControls
-                    // Pass required props like isLoading, isShuffled, loopMode etc.
-                    isLoading={isLoading}
-                    isShuffled={isShuffled}
-                    toggleShuffle={handleShuffleToggle}
-                    loopMode={loopMode}
-                    toggleLoop={handleLoopToggle}
-                    // Add props for handlePlayPause, handleNext, handlePrevious if needed
-                />
-                <ProgressBar
-                    currentTime={currentTime}
-                    duration={duration}
-                    onSeek={handleSeek}
-                    isLoading={isLoading}
-                    className="w-full"
-                />
-            </div>
-
-             {/* Visualization (Takes up space) */}
-             <div className="col-span-3 lg:col-span-3 flex items-center justify-center h-full">
-                 <canvas
-                     ref={canvasRef}
-                     className="w-full h-[50px]" // Set explicit height
-                     // Add width/height attributes for better rendering if needed
-                 />
-             </div>
-
-
-            {/* Volume Control (Smaller Width) */}
-            <div className="col-span-2 flex items-center justify-end">
-                <VolumeControl
-                    volume={volume}
-                    isMuted={isMuted}
-                    onVolumeChange={handleVolumeChange}
-                    onMuteToggle={handleMuteToggle}
-                />
-            </div>
+    <div 
+      className={cn(
+        "audio-player-container fixed bottom-0 left-0 right-0 z-[100]", // z-index was 60, spec implies high importance, using 100. Header is 40.
+        "transition-transform duration-300 ease-in-out",
+        isPlayerVisible ? "translate-y-0" : "translate-y-full",
+        "bg-neutral-900/80 backdrop-blur-md border-t border-neutral-700/50 shadow-[0_-5px_20px_rgba(0,0,0,0.3)]", // Updated styles from spec
+        "h-20 flex items-center justify-between px-3 sm:px-4 text-neutral-200"
+      )}
+      aria-hidden={!isPlayerVisible}
+    >
+      <div className="max-w-screen-xl mx-auto grid grid-cols-[auto_1fr_auto] sm:grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-4">
+        {/* Left Section: Track Info & Album Art (conditionally shown on larger screens) */}
+        <div className="flex items-center gap-3 overflow-hidden">
+          <TrackDisplay track={currentTrack} />
         </div>
 
-         {/* Loading Overlay */}
-         {isLoading && (
-              <div className="absolute inset-0 bg-neutral-900/50 flex items-center justify-center rounded-xl z-10">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              </div>
-          )}
+        {/* Center Section: Playback Controls & Progress Bar */}
+        <div className="flex flex-col items-center justify-center w-full max-w-md mx-auto">
+          <PlaybackControls 
+            onPlayPause={togglePlay} 
+            onNext={playNext} 
+            onPrevious={playPrevious} 
+            isPlaying={isPlaying} 
+            isLoading={isLoading}
+            nextTrackTitle={nextTrackTitle}
+            prevTrackTitle={prevTrackTitle}
+          />
+          <ProgressBar 
+            currentTime={currentTime} 
+            duration={duration} 
+            onSeek={(time) => {
+              if (howlRef.current) {
+                howlRef.current.seek(time);
+                setCurrentTime(time); // Optimistically update UI
+              }
+            }}
+            disabled={isLoading || !duration}
+          />
+        </div>
+
+        {/* Right Section: Volume, Loop/Shuffle, Visualizer Toggle */}
+        <div className="flex items-center justify-end gap-2 sm:gap-3">
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={toggleLoop} className={cn("w-8 h-8", loopMode !== 'none' && "text-cyan-glow")} aria-label={loopMode === 'one' ? 'Disable loop track' : loopMode === 'all' ? 'Disable loop queue' : 'Enable loop queue'}>
+                  {loopMode === 'track' ? <Repeat1 size={18} /> : <Repeat size={18} />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="bg-neutral-800 border-neutral-700 text-neutral-200 text-xs">
+                <p>Loop: {loopMode === 'none' ? 'Off' : loopMode === 'track' ? 'Track' : 'Queue'}</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={toggleShuffle} className={cn("w-8 h-8", isShuffled && "text-cyan-glow")} aria-label={isShuffled ? 'Disable shuffle' : 'Enable shuffle'}>
+                  <Shuffle size={18} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="bg-neutral-800 border-neutral-700 text-neutral-200 text-xs">
+                <p>Shuffle: {isShuffled ? 'On' : 'Off'}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <VolumeControl 
+            volume={volume}
+            onVolumeChange={setVolume}
+            isMuted={isMuted}
+            onMuteToggle={toggleMute}
+          />
+          <Sheet>
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <SheetTrigger asChild>
+                    <Button variant="ghost" size="icon" className={cn("w-8 h-8")} aria-label="View Queue">
+                      <ListMusic size={18} />
+                    </Button>
+                  </SheetTrigger>
+                </TooltipTrigger>
+                <TooltipContent className="bg-neutral-800 border-neutral-700 text-neutral-200 text-xs">
+                  <p>View Queue</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <SheetContent className="w-[350px] sm:w-[400px] p-0 flex flex-col bg-background text-foreground border-l border-border">
+              <QueueDisplay
+                 queue={queue}
+                 currentTrackIndex={currentTrackIndex}
+                 onRemoveTrack={removeFromQueue} // Pass the actual remove function
+              />
+            </SheetContent>
+          </Sheet>
+          {/* Optional: Visualizer canvas - can be toggled */}
+          {/* <canvas ref={canvasRef} width="100" height="30" className="hidden sm:block rounded"></canvas> */}
+        </div>
       </div>
-    </TooltipProvider>
+      {isLoading && (
+        <div className="absolute inset-x-0 top-0 h-0.5 bg-cyan-glow/30 animate-pulse">
+          <span className="sr-only" aria-live="polite">Loading track...</span>
+        </div>
+      )}
+      {error && (
+        <div 
+          className="absolute bottom-full left-0 right-0 bg-red-500/80 text-white text-xs text-center py-1 px-4 shadow-md"
+          role="alert"
+          aria-live="assertive"
+        >
+          {error}
+        </div>
+      )}
+    </div>
   );
-}; 
+} 

@@ -475,65 +475,171 @@ export async function getStripeBalance(): Promise<BalanceResult> {
   }
 } 
 
-// --- Verify Checkout Session Server Action --- 
+// --- Verify Checkout Session ---
+interface VerifyResultItem {
+  description: string;
+  quantity: number;
+  amount_total: number; // in cents
+}
 
 interface VerifyResult {
   success: boolean;
   message?: string;
-  error?: string; // Added error field
-  // Optionally return customer details if needed
+  error?: string;
   customerEmail?: string | null;
-  customerName?: string | null; 
+  customerName?: string | null;
+  orderItems?: VerifyResultItem[]; // Added to return fetched items
+  orderTotal?: number; // Added to return total amount in cents
+  orderId?: string; // If an internal order ID is created/retrieved
 }
 
 export async function verifyCheckoutSession(sessionId: string | null): Promise<VerifyResult> {
-  const { userId: clerkUserId } = await auth(); // Corrected: await auth()
-
   if (!sessionId) {
-    return { success: false, error: "Missing session ID." };
+    return { success: false, error: 'Session ID is missing.' };
   }
-  // Removed check for clerkUserId here, as guests might land here too.
-  // We verify based on session status primarily.
+
+  const { userId: clerkUserId } = auth(); // Use Clerk's auth() to get current user
+
+  if (!clerkUserId) {
+    return { success: false, error: 'User not authenticated.' };
+  }
 
   try {
-    console.log(`[verifyCheckoutSession] Verifying session: ${sessionId}`);
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ['customer'], // Optionally expand customer details
+      expand: ['line_items', 'customer', 'payment_intent'], // Expand line_items
     });
-    
-    // Basic status check
-    if (session.status !== 'complete') {
-      console.log(`[verifyCheckoutSession] Session ${sessionId} status is ${session.status}`);
-      return { success: false, message: "Session is not complete." };
+
+    if (!session) {
+      return { success: false, error: 'Stripe session not found.' };
     }
-    if (session.payment_status !== 'paid') {
-         console.log(`[verifyCheckoutSession] Session ${sessionId} payment status is ${session.payment_status}`);
-         return { success: false, message: "Payment not successful." };
+
+    // --- Extract Customer Info (Optional, but good for records) --- 
+    let customerEmail: string | null = null;
+    let customerName: string | null = null;
+    if (session.customer && typeof session.customer === 'object') {
+      const customer = session.customer as Stripe.Customer;
+      customerEmail = customer.email;
+      customerName = customer.name; 
+    } else if (session.customer_details) {
+      customerEmail = session.customer_details.email;
+      customerName = session.customer_details.name;
     }
+    // ----------------------------------------------------------------
     
-    // Optional: Verify user match if logged in and client_reference_id exists
-    if (clerkUserId && session.client_reference_id) {
-        const internalUserId = await getInternalUserId(clerkUserId).catch(() => null);
-        if (session.client_reference_id !== internalUserId) {
-            console.warn(`[verifyCheckoutSession] User mismatch! Session user (client_ref): ${session.client_reference_id}, Logged in user (internal): ${internalUserId}`);
-            // Decide how strict. Log warning but allow success based on payment status.
-            // return { success: false, error: "Session user does not match logged-in user." };
+    // --- Extract Line Items & Total ---
+    let fetchedOrderItems: VerifyResultItem[] = [];
+    let orderTotal = session.amount_total; // This is already in cents
+
+    if (session.line_items && session.line_items.data) {
+       // If line_items were expanded, listLineItems might not be strictly necessary
+      // but using it ensures we get the most accurate final state of line items.
+      const lineItems = await stripe.checkout.sessions.listLineItems(sessionId, { limit: 100 }); 
+      fetchedOrderItems = lineItems.data.map(item => ({
+        description: item.description,
+        quantity: item.quantity || 1,
+        amount_total: item.amount_total, // Stripe amount_total is in cents
+      }));
+    } else {
+      console.warn(`[verifyCheckoutSession] Line items not found or not expanded for session ${sessionId}. Order summary might be incomplete.`);
+    }
+    // ------------------------------------
+
+    if (session.payment_status === 'paid' && session.status === 'complete') {
+      // Payment successful and session complete
+      const internalUserId = await getInternalUserId(clerkUserId);
+      if (!internalUserId) {
+        return { success: false, error: 'Internal user ID not found.' };
+      }
+
+      // Check if order already exists to prevent duplicates
+      const existingOrder = await prisma.order.findFirst({
+        where: { stripeCheckoutSessionId: sessionId },
+      });
+
+      let createdOrder;
+      if (!existingOrder) {
+        // Create Order and OrderItems in Prisma
+        const licenseIdsString = session.metadata?.licenseIds;
+        const licenseIds = licenseIdsString ? licenseIdsString.split(',') : [];
+
+        // Basic validation for metadata
+        if (!licenseIdsString || licenseIds.length === 0) {
+           console.error(`[verifyCheckoutSession] Missing or invalid licenseIds in metadata for session ${sessionId}`);
+           return { success: false, error: 'Order metadata missing license information.', customerEmail, customerName };
         }
+
+        const licenses = await prisma.license.findMany({
+            where: { id: { in: licenseIds } },
+            select: { id: true, trackId: true, price: true, filesIncluded: true }, // Fetch filesIncluded
+        });
+
+        if (licenses.length !== licenseIds.length) {
+            console.error(`[verifyCheckoutSession] License ID mismatch for session ${sessionId}`);
+            return { success: false, error: 'Order data inconsistency - item details not found.', customerEmail, customerName };
+        }
+
+        const orderItemsData = licenses.map(license => ({
+          trackId: license.trackId,
+          licenseId: license.id,
+          priceAtPurchase: license.price, // Store the price at the time of purchase
+        }));
+
+        createdOrder = await prisma.order.create({
+          data: {
+            customerId: internalUserId,
+            stripeCheckoutSessionId: sessionId,
+            status: 'COMPLETED',
+            totalAmount: new Decimal((session.amount_total || 0) / 100), // Convert cents to decimal
+            items: {
+              create: orderItemsData,
+            },
+          },
+          include: { items: true }, // Include items to grant permissions
+        });
+
+        // Grant download permissions
+        for (const orderItem of createdOrder.items) {
+          const license = licenses.find(l => l.id === orderItem.licenseId);
+          if (license) {
+            await prisma.userDownloadPermission.createMany({
+              data: license.filesIncluded.map(fileType => ({
+                userId: internalUserId,
+                trackId: orderItem.trackId,
+                orderId: createdOrder.id,
+                licenseId: license.id,
+                fileType: fileType, // This should match enum values in your schema
+              })),
+              skipDuplicates: true,
+            });
+          }
+        }
+        console.log(`[verifyCheckoutSession] Order ${createdOrder.id} created and permissions granted for session ${sessionId}.`);
+      } else {
+        console.log(`[verifyCheckoutSession] Order ${existingOrder.id} already exists for session ${sessionId}. Skipping creation.`);
+        createdOrder = existingOrder;
+      }
+
+      return {
+        success: true,
+        message: 'Payment verified and order processed.',
+        customerEmail,
+        customerName,
+        orderItems: fetchedOrderItems,
+        orderTotal: orderTotal || 0,
+        orderId: createdOrder?.id
+      };
+    } else if (session.status === 'open') {
+      // Session is still open, payment not completed
+      return { success: false, error: 'Payment not completed. The checkout session is still open.', customerEmail, customerName };
+    } else {
+      // Other statuses like 'expired' or payment failed
+      return { success: false, error: `Checkout session status: ${session.status}. Payment not successful.`, customerEmail, customerName };
     }
-
-    console.log(`[verifyCheckoutSession] Session ${sessionId} verified successfully.`);
-    // Extract customer details if needed (requires expand: ['customer'])
-    const customerDetails = session.customer as Stripe.Customer | null;
-    return { 
-        success: true, 
-        customerEmail: customerDetails?.email ?? session.customer_details?.email, // Use expanded customer email if available
-        customerName: customerDetails?.name ?? session.customer_details?.name 
-    };
-
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Verification failed.";
-    console.error(`[verifyCheckoutSession] Error retrieving session ${sessionId}:`, error);
-    return { success: false, error: "Could not verify order status." }; 
+    console.error('[verifyCheckoutSession] Error verifying Stripe session:', error);
+    // Explicitly check if it's an Error instance before accessing message
+    const errorMessage = (error instanceof Error) ? (error as Error).message : 'An unknown error occurred.'; 
+    return { success: false, error: `Verification failed: ${errorMessage}` };
   }
 }
 // ----------------------------------------- 

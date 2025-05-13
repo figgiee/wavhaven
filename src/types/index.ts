@@ -1,9 +1,11 @@
     // src/types/index.ts
-    import type { Track, License, TrackFile } from '@prisma/client';
+    import type { Track, License as PrismaLicense, TrackFile, Tag as PrismaTag, Genre as PrismaGenre } from '@prisma/client';
+    import type { License } from '../components/license/license.types'; // Import detailed License type
 
     export interface Beat {
         id: string; // Use string from Prisma
         title: string;
+        slug: string; // Added for clean URLs
         imageUrl?: string | null; // From getStorageUrl
         coverImageUrl?: string | null; // Raw path from Prisma
         producerName: string;
@@ -14,8 +16,9 @@
         audioSrc?: string | null; // From getStorageUrl
         previewAudioUrl?: string | null; // Raw path from Prisma
         beatUrl?: string; // Link to the beat detail page
-        licenseId?: string; // For cart logic - might be generated
-        licenses?: { price: number }[]; // Include licenses for price extraction
+        licenses?: License[]; // Use detailed License type
+        tags?: { id: string; name: string }[]; // Added for displaying tags
+        genre?: { id: string; name: string; slug?: string }; // Added for displaying genre
         sellerProfile?: { storeName: string | null } | null; // Include seller profile for producer name
         // Add other potentially needed fields
       }

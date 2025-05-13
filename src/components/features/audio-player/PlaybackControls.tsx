@@ -8,7 +8,7 @@ import {
 	TrackNextIcon,
 	TrackPreviousIcon,
 } from '@radix-ui/react-icons'; // Using Radix icons directly
-import { Loader2, Repeat, Repeat1, Shuffle } from 'lucide-react'; // Import Loader2 and other needed icons
+import { Loader2, Repeat, Repeat1, Shuffle, Play, Pause, SkipForward, SkipBack } from 'lucide-react'; // Import Loader2 and other needed icons
 import { usePlayerStore } from '@/stores/use-player-store';
 import { cn } from '@/lib/utils';
 import {
@@ -31,6 +31,8 @@ interface PlaybackControlsProps {
 	// onPlayPause: () => void;
 	// onNext: () => void;
 	// onPrev: () => void;
+	nextTrackTitle?: string;
+	prevTrackTitle?: string;
 }
 
 // Destructure new props
@@ -39,7 +41,9 @@ export function PlaybackControls({
 	isShuffled, 
 	toggleShuffle, 
 	loopMode, 
-	toggleLoop 
+	toggleLoop,
+	nextTrackTitle,
+	prevTrackTitle,
 }: PlaybackControlsProps) {
 	// Get needed state/actions directly from the store
 	const isPlaying = usePlayerStore((state) => state.isPlaying);
@@ -62,20 +66,17 @@ export function PlaybackControls({
 	return (
 		// Wrap in TooltipProvider
 		<TooltipProvider delayDuration={100}> 
-			<div className="flex items-center justify-center gap-2 md:gap-4"> {/* Increased gap slightly for md+ */}
+			<div className="flex items-center justify-center gap-2 sm:gap-3"> {/* Increased gap slightly for sm+ */}
 				{/* Shuffle Button */}
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
 							size="icon"
 							className={cn(
-								// Base state: default button appearance, muted text
 								'h-8 w-8 text-muted-foreground',
-								'hover:text-foreground active:scale-95',
-								// Active state: Lighter bg, cyan dotted ring, foreground text
-								'data-[active=true]:bg-neutral-700 data-[active=true]:text-foreground data-[active=true]:ring-1 data-[active=true]:ring-dotted data-[active=true]:ring-cyan-400',
-								// Transitions and layout
-								'transition-all duration-150 hidden md:flex'
+								'hover:text-cyan-glow active:scale-95',
+								'data-[active=true]:bg-neutral-700 data-[active=true]:text-cyan-glow data-[active=true]:ring-1 data-[active=true]:ring-dotted data-[active=true]:ring-cyan-400',
+								'transition-all duration-150 hidden sm:flex'
 							)}
 							data-active={isShuffled}
 							onClick={toggleShuffle}
@@ -93,17 +94,18 @@ export function PlaybackControls({
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
+							variant="ghost"
 							size="icon"
-							className="h-9 w-9 hover:bg-accent/50 active:scale-95 disabled:opacity-50 text-muted-foreground hover:text-foreground transition-all duration-150"
 							onClick={playPrevious}
+							disabled={isLoading}
+							className="w-9 h-9 sm:w-10 sm:h-10 text-neutral-400 hover:text-cyan-glow focus-visible:ring-cyan-glow"
 							aria-label="Previous track"
-							// disabled={!canSkipPrevious}
 						>
-							<TrackPreviousIcon className="h-6 w-6" />
+							<SkipBack size={18} className="sm:w-5 sm:h-5" />
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent className="bg-black text-popover-foreground border px-3 py-1.5 text-xs rounded-md shadow-md">
-						<p>Previous track</p>
+					<TooltipContent className="bg-neutral-800 border-neutral-700 text-neutral-200 text-xs">
+						<p>Previous: {prevTrackTitle || "None"}</p>
 					</TooltipContent>
 				</Tooltip>
 
@@ -121,11 +123,11 @@ export function PlaybackControls({
 								disabled={isLoading} // Disable button while loading
 							>
 								{isLoading ? (
-									<Loader2 className="h-8 w-8 animate-spin" /> // Larger icon
+									<Loader2 size={24} className="animate-spin sm:w-7 sm:h-7" /> // Larger icon
 								) : isPlaying ? (
-									<PauseIcon className="h-8 w-8" /> // Larger icon
+									<Pause size={24} fill="currentColor" className="sm:w-7 sm:h-7" /> // Larger icon
 								) : (
-									<PlayIcon className="h-8 w-8" /> // Larger icon
+									<Play size={24} fill="currentColor" className="sm:w-7 sm:h-7" /> // Larger icon
 								)}
 							</Button>
 						</div>
@@ -139,17 +141,18 @@ export function PlaybackControls({
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
+							variant="ghost"
 							size="icon"
-							className="h-9 w-9 hover:bg-accent/50 active:scale-95 disabled:opacity-50 text-muted-foreground hover:text-foreground transition-all duration-150"
 							onClick={playNext}
+							disabled={isLoading}
+							className="w-9 h-9 sm:w-10 sm:h-10 text-neutral-400 hover:text-cyan-glow focus-visible:ring-cyan-glow"
 							aria-label="Next track"
-							// disabled={!canSkipNext}
 						>
-							<TrackNextIcon className="h-6 w-6" />
+							<SkipForward size={18} className="sm:w-5 sm:h-5" />
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent className="bg-black text-popover-foreground border px-3 py-1.5 text-xs rounded-md shadow-md">
-						<p>Next track</p>
+					<TooltipContent className="bg-neutral-800 border-neutral-700 text-neutral-200 text-xs">
+						<p>Next: {nextTrackTitle || "None"}</p>
 					</TooltipContent>
 				</Tooltip>
 
@@ -159,13 +162,10 @@ export function PlaybackControls({
 						<Button
 							size="icon"
 							className={cn(
-								// Base state: default button appearance, muted text
 								'h-8 w-8 text-muted-foreground',
-								'hover:text-foreground active:scale-95',
-								// Active state: Lighter bg, cyan dotted ring, foreground text
-								'data-[active=true]:bg-neutral-700 data-[active=true]:text-foreground data-[active=true]:ring-1 data-[active=true]:ring-dotted data-[active=true]:ring-cyan-400',
-								// Transitions and layout
-								'transition-all duration-150 hidden md:flex'
+								'hover:text-cyan-glow active:scale-95',
+								'data-[active=true]:bg-neutral-700 data-[active=true]:text-cyan-glow data-[active=true]:ring-1 data-[active=true]:ring-dotted data-[active=true]:ring-cyan-400',
+								'transition-all duration-150 hidden sm:flex'
 							)}
 							data-active={loopMode !== 'off'}
 							onClick={toggleLoop}

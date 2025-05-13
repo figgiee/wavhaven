@@ -6,98 +6,66 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Music, Tag, Clock, KeyRound } from 'lucide-react';
-import { TrackCard } from '@/components/track-card';
-import type { TrackDetails, License as LicenseType } from '@/server-actions/trackActions';
-import type { Beat as BeatCardType } from '@/components/track-card';
-import { Beat } from '@/types';
+import { Music, Tag, Clock, KeyRound, Info, UserCircle, Heart } from 'lucide-react';
+import TrackCard from '@/components/track-card';
+import type { TrackDetails } from '@/server-actions/trackActions';
+import type { Beat as BeatCardType } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface TrackSidebarProps {
   track: TrackDetails;
-  selectedLicenseId?: string;
 }
 
 function mapTrackToBeatCardType(track: TrackDetails): BeatCardType {
     const beatUrl = `/track/${track.slug}`;
-
-    // Determine the producer display name
     const producerDisplayName = track.producer?.username || "Unknown Producer";
-
     return {
         id: track.id,
         title: track.title,
+        slug: track.slug,
         imageUrl: track.coverImageUrl ?? undefined,
+        coverImageUrl: track.coverImageUrl ?? undefined,
         producerName: producerDisplayName,
         producerProfileUrl: track.producer?.username ? `/u/${track.producer.username}` : undefined,
         bpm: track.bpm ?? undefined,
         key: track.key ?? undefined,
         audioSrc: track.previewAudioUrl ?? '',
         beatUrl: beatUrl,
-        licenses: track.licenses.map(l => ({
+        licenses: (track.licenses || []).map(l => ({
             ...l,
-            price: typeof l.price === 'object' ? Number(l.price) : l.price,
+            price: typeof l.price === 'string' ? parseFloat(l.price) : (typeof l.price === 'object' && l.price !== null ? Number((l.price as any).amount) : Number(l.price)),
         })),
+        producer: track.producer ? { id: track.producer.id, username: track.producer.username, storeName: track.producer.storeName } : undefined,
+        genre: track.genre ? { id: track.genre.id, name: track.genre.name, slug: track.genre.slug } : undefined,
+        moods: track.moods || [],
+        tags: track.tags || [],
+        durationInSeconds: track.durationInSeconds || 0,
+        waveformUrl: track.waveformUrl || '',
+        playCount: track.playCount || 0,
+        likeCount: track.likeCount || 0,
+        commentCount: track.commentCount || 0,
+        createdAt: track.createdAt || new Date(),
+        updatedAt: track.updatedAt || new Date(),
     };
 }
 
 export function TrackSidebar({ track }: TrackSidebarProps) {
-  const producerProfileUrl = track.producer?.username ? `/u/${track.producer.username}` : '#';
-
   const beatForCard = useMemo(() => mapTrackToBeatCardType(track), [track]);
 
   return (
-    <>
-      <div className="w-full md:w-[300px] lg:w-[320px] xl:w-[340px] flex-shrink-0">
-        <div className="flex flex-col items-center gap-6 sticky top-[calc(var(--header-height,6rem)+1.5rem)]">
-          
-          <div className="w-full">
-            <TrackCard 
-              beat={beatForCard} 
-              fullTrackList={[beatForCard]}
-              index={0}
-            />
-          </div>
-
-          <div className="w-full space-y-4 px-2">
-            {track.description && (
-                <div>
-                    <h3 className="font-semibold mb-1 text-sm">Description</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{track.description}</p>
-                </div>
-            )}
-
-            {(track.bpm || track.key) && (
-                 <div className="flex items-center justify-around gap-4 text-sm border-t border-b py-3">
-                    {track.bpm && (
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Clock className="w-4 h-4" />
-                            <span>{track.bpm} BPM</span>
-                        </div>
-                    )}
-                    {track.key && (
-                         <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <KeyRound className="w-4 h-4" />
-                             <span>{track.key}</span>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {track.tags && track.tags.length > 0 && (
-                 <div>
-                     <h3 className="font-semibold mb-2 text-sm">Tags</h3>
-                     <div className="flex flex-wrap gap-2">
-                        {track.tags.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-xs">
-                            {tag}
-                        </Badge>
-                        ))}
-                    </div>
-                </div>
-            )}
-          </div>
-        </div>
+    <aside className={cn(
+        "w-full md:w-[300px] lg:w-[340px] xl:w-[380px] flex-shrink-0",
+        "md:sticky md:top-[calc(var(--site-header-height,4rem)+2rem)] md:max-h-[calc(100vh-var(--site-header-height,4rem)-4rem)]"
+    )}>
+      <div className="bg-neutral-800/30 backdrop-blur-sm border border-neutral-700/50 rounded-xl p-1 shadow-xl">
+        <TrackCard 
+          beat={beatForCard} 
+          fullTrackList={[beatForCard]}
+          index={0}
+          variant="detailPage"
+          className="w-full h-full rounded-lg overflow-hidden"
+        />
       </div>
-    </>
+    </aside>
   );
 } 

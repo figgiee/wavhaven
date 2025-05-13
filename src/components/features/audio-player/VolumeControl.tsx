@@ -3,100 +3,70 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { VolumeX, Volume1, Volume2 } from 'lucide-react'; // Using Volume1 and Volume2 for different levels
+import { VolumeX, Volume1, Volume2, Volume } from 'lucide-react'; // Using Volume1, Volume2, and Volume for different levels
 import { usePlayerStore } from '@/stores/use-player-store'; // Import the store
 import { cn } from '@/lib/utils';
 
-// Remove props interface
-// interface VolumeControlProps {
-//   volume: number; // 0-100
-//   isMuted: boolean;
-//   onVolumeChange: (volume: number) => void;
-//   onMuteToggle: () => void;
-//   className?: string;
-// }
+interface VolumeControlProps {
+  volume: number;
+  onVolumeChange: (volume: number) => void;
+  isMuted: boolean;
+  onMuteToggle: () => void;
+}
 
-// Update component definition
-export function VolumeControl({ className }: { className?: string }) {
-  // Get state and actions from the store
-  const volume = usePlayerStore((state) => state.volume);
-  const isMuted = usePlayerStore((state) => state.isMuted);
-  const setVolume = usePlayerStore((state) => state.setVolume);
-  const toggleMute = usePlayerStore((state) => state.toggleMute);
+export const VolumeControl: React.FC<VolumeControlProps> = ({
+  volume,
+  onVolumeChange,
+  isMuted,
+  onMuteToggle,
+}) => {
+  const [isHovering, setIsHovering] = useState(false);
 
-  // Internal state for smoother dragging, similar to ProgressBar
-  const [sliderValue, setSliderValue] = useState<number>(volume);
-  const [isSeeking, setIsSeeking] = useState<boolean>(false);
-
-  // Sync internal state with store changes, unless user is dragging
-  useEffect(() => {
-    if (!isSeeking) {
-        // Use the muted state to determine the visual slider value
-        setSliderValue(isMuted ? 0 : volume);
-    }
-  }, [volume, isMuted, isSeeking]);
-
-  const handleValueChange = (value: number[]) => {
-    setSliderValue(value[0]);
-    // Re-add immediate store update for real-time volume change
-    setVolume(value[0]);
+  const getVolumeIcon = () => {
+    if (isMuted || volume === 0) return <VolumeX size={20} />;
+    if (volume < 0.5) return <Volume1 size={20} />;
+    if (volume < 0.8) return <Volume size={20} />;
+    return <Volume2 size={20} />;
   };
 
-  const handlePointerDown = () => {
-    setIsSeeking(true);
+  const handleVolumeBarClick = (value: number[]) => {
+    const newVolume = value[0] / 100; // Slider max is 100, convert to 0-1 range
+    onVolumeChange(newVolume);
   };
-  const handlePointerUp = () => {
-      // Update global state only when drag finishes
-      setVolume(sliderValue);
-      setIsSeeking(false);
-  }
 
-  const VolumeIcon = () => {
-    // Use state from store for determining icon
-    if (isMuted || sliderValue === 0) {
-      return <VolumeX className="h-6 w-6" />;
-    } else if (sliderValue < 50) {
-      return <Volume1 className="h-6 w-6" />;
-    } else {
-      return <Volume2 className="h-6 w-6" />;
-    }
-  };
+  const effectiveVolume = isMuted ? 0 : volume;
 
   return (
-    <div className={cn("group flex items-center gap-2", className)}>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={toggleMute} // Use action from store
-        aria-label={isMuted ? 'Unmute' : 'Mute'}
-        className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all duration-150 active:scale-95"
+    <div className="flex items-center gap-1 sm:gap-2 w-28 transition-all duration-200 ease-in-out">
+      <Button 
+        variant="ghost" 
+        size="icon" 
+        onClick={onMuteToggle} 
+        className="w-8 h-8 text-neutral-400 hover:text-cyan-glow focus-visible:ring-cyan-glow"
+        aria-label={isMuted ? "Unmute" : "Mute"}
       >
-        <VolumeIcon />
+        {getVolumeIcon()}
       </Button>
-      <Slider
-        value={[sliderValue]} // Value is based on internal state for dragging
-        max={100}
-        step={1}
+      <Slider 
+        defaultValue={[volume]} 
+        max={100} 
+        step={1} 
+        aria-label="Volume"
         className={cn(
-            "relative group flex h-5 w-24 touch-none select-none items-center cursor-pointer",
-            // --- START: Updated Styles ---
-            // Target the track directly using data-slot and override default bg-muted
-            '[&_[data-slot=slider-track]]:relative [&_[data-slot=slider-track]]:h-1 [&_[data-slot=slider-track]]:grow [&_[data-slot=slider-track]]:overflow-hidden [&_[data-slot=slider-track]]:rounded-full [&_[data-slot=slider-track]]:bg-neutral-700',
-            // Target the range directly using data-slot and override default bg-primary
-            '[&_[data-slot=slider-range]]:absolute [&_[data-slot=slider-range]]:h-full [&_[data-slot=slider-range]]:rounded-full [&_[data-slot=slider-range]]:bg-blue-400',
-             // Target the thumb directly using data-slot and override default styles
-             '[&_[data-slot=slider-thumb]]:block [&_[data-slot=slider-thumb]]:h-3 [&_[data-slot=slider-thumb]]:w-3 [&_[data-slot=slider-thumb]]:rounded-full [&_[data-slot=slider-thumb]]:bg-white',
-             // Remove default thumb border/background if needed (uncomment if thumb looks wrong)
-             // '[&_[data-slot=slider-thumb]]:border-0 [&_[data-slot=slider-thumb]]:shadow-none',
-             // Transitions (can often be left to default or customized here)
-             '[&_[data-slot=slider-range]]:transition-colors [&_[data-slot=slider-track]]:transition-colors duration-150'
-             // --- END: Updated Styles ---
+          "relative h-1.5 w-16 rounded-full cursor-pointer bg-neutral-700",
+          "transition-all duration-150 ease-in-out",
+          "opacity-0 sm:opacity-100 sm:w-20 group-hover:opacity-100"
         )}
-        onValueChange={handleValueChange}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        aria-label="Volume control"
-      />
+        value={[isMuted ? 0 : Math.round(volume * 100)]} // Convert 0-1 volume to 0-100 for slider
+        onValueChange={handleVolumeBarClick}
+      >
+        {isHovering && !isMuted && (
+            <div 
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-cyan-glow rounded-full shadow-glow-cyan-sm pointer-events-none" // Added pointer-events-none
+                style={{ left: `${effectiveVolume * 100}%` }}
+            />
+        )}
+      </Slider>
     </div>
   );
 }; 

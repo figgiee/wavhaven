@@ -30,26 +30,41 @@ const nextConfig = {
         port: '',
         pathname: '/**', // Allow any path on this host
       },
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+        port: '',
+        pathname: '/**',
+      },
       // Add other hostnames if needed, e.g., for user profile images
     ],
   },
   async rewrites() {
     return [
-      {
-        source: "/ingest/static/:path*",
-        destination: "https://us-assets.i.posthog.com/static/:path*",
-      },
-      {
-        source: "/ingest/:path*",
-        destination: "https://us.i.posthog.com/:path*",
-      },
-      {
-        source: "/ingest/decide",
-        destination: "https://us.i.posthog.com/decide",
-      },
+      // {
+      //   source: "/ingest/static/:path*",
+      //   destination: "https://us-assets.i.posthog.com/static/:path*",
+      // },
+      // {
+      //   source: "/ingest/:path*",
+      //   destination: "https://us.i.posthog.com/:path*",
+      // },
+      // {
+      //   source: "/ingest/decide",
+      //   destination: "https://us.i.posthog.com/decide",
+      // },
     ];
   },
   skipTrailingSlashRedirect: true,
+  // webpack: (config, { isServer }) => {
+  //   if (!isServer) {
+  //     config.resolve.fallback = {
+  //       ...config.resolve.fallback,
+  //       fs: false,
+  //     };
+  //   }
+  //   return config;
+  // },
 };
 
 export default nextConfig; 

@@ -4,7 +4,7 @@ import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useState, useMemo, useCallback } from 'react';
-import { Play, Plus, Music, Pause, ShoppingCart, Loader2, Check, Clock, Layers, MinusCircle, ExternalLink } from 'lucide-react';
+import { Play, Plus, Music, Pause, ShoppingCart, Loader2, Check, Clock, Layers, MinusCircle, ExternalLink, Heart } from 'lucide-react';
 import { cn } from '@/lib/utils'; // Assuming Shadcn UI utils path
 import { usePlayerStore } from '@/stores/use-player-store'; // Import Zustand store
 import { useCartStore, CartItem } from '@/stores/useCartStore'; // Import cart store and type
@@ -12,18 +12,16 @@ import type { License } from '@/components/license/license.types'; // Import Lic
 import { PlayerTrack } from '@/types'; // <-- Import PlayerTrack type
 import { toast } from 'sonner'; // Import toast
 import { Skeleton } from '@/components/ui/skeleton'; // <-- Import Skeleton
-import { useUIStore } from '@/stores/use-ui-store'; // Import the UI store
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatPrice } from '@/lib/utils';
 import { useAudioPlayer } from '@/stores/useAudioPlayer';
-import { useSlideOutPanel } from '@/stores/useSlideOutPanel';
-import { adaptBeatData } from '@/components/features/slide-out-panel/SlideOutPanel';
-import type { Beat } from '@/types';
-import { Share2Icon, HeartIcon } from '@radix-ui/react-icons';
-import { useToast } from "@/components/ui/use-toast"
+import { useUIStore } from '@/stores/use-ui-store'; // <-- Import useUIStore
+import type { Beat } from '@/types'; // Ensure Beat is imported from global types
+import { Share2Icon } from '@radix-ui/react-icons';
 import { TrackCardSkeleton } from './track-card-skeleton'; // <-- Import renamed skeleton
 import { LicenseModal } from '@/components/license/LicenseModal'; // <-- ADD Import
+import { usePostHog } from 'posthog-js/react'; // Import PostHog hook
+import { motion } from 'framer-motion';
 
 // // {/* TODO: Define more specific types, perhaps using Prisma-generated types? */}
 // interface Beat {
@@ -47,357 +45,416 @@ export interface TrackCardProps {
     fullTrackList: Beat[]; // Add the full list prop
     index: number; // Add the index prop
     className?: string;
-    onPlay?: (beatId: string) => void; // Callback when play is clicked
-    isPlaying?: boolean; // Is this track currently playing?
-    isLoading?: boolean; // Is the audio for this track loading?
-    isAuthenticated?: boolean; // Is the user logged in?
-    displayMode?: 'grid' | 'list'; // Optional display mode
-    tags?: string[]; // Optional tags to display
-    // Add other props as needed, e.g., for handling different actions
-    showAddToPlaylist?: boolean;
-    showAddToCart?: boolean;
-    showShare?: boolean;
+    /** @deprecated Prefer using the `variant` prop to control layout. */
+    displayMode?: 'grid' | 'list'; // Optional display mode, can be deprecated if variant covers all cases
+    variant?: 'default' | 'listitem' | 'compact' | 'detailPage'; // Added variant prop
 }
 
 // --- Main Component ---
-export function TrackCard({ // Rename component function
+const TrackCardComponent: React.FC<TrackCardProps> = ({ // Rename component function and EXPORT IT
     beat,
     fullTrackList, // Destructure the new prop
     index, // Destructure the new prop
     className,
-    onPlay,
-    isPlaying = false,
-    isLoading = false,
-    isAuthenticated = false,
-    displayMode = 'grid',
-    tags,
-    showAddToPlaylist = true, // Default to true for core features
-    showAddToCart = true,
-    showShare = true,
-}: TrackCardProps) {
+    displayMode = 'grid', // Kept, used for conditional styling for now
+    variant = 'default', // Destructure variant, default to 'default'
+}) => { // Added '=>' here and will add ';' at the end of the component block
   const [isImageLoading, setIsImageLoading] = useState(true); // <-- State for image loading
-  const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false); // <-- UNCOMMENT this line
+  const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
+  const [isFavorited, setIsFavorited] = useState(false); // Placeholder state, as in existing code
+  // Optimistic UI for add to cart
+  const [isOptimisticallyInCart, setIsOptimisticallyInCart] = useState(false);
 
-  // Get player state and actions from Zustand
+  const posthog = usePostHog();
+
   const {
       currentTrack,
       isPlaying: playerIsPlaying,
       isLoading: playerIsLoading,
       togglePlay,
-      playTrackFromList, // <-- ADDED new action
+      playTrackFromList,
   } = usePlayerStore();
 
-  // Explicitly select store state and actions
   const items = useCartStore((state) => state.items);
   const addItem = useCartStore((state) => state.addItem);
   const removeItem = useCartStore((state) => state.removeItem);
+  const openSlideOut = useUIStore((state) => state.openSlideOut); // <-- Use openSlideOut from useUIStore
 
-  // Get UI Store action
-  const openSlideOut = useUIStore((state) => state.openSlideOut);
+  const isCurrentTrackPlaying = playerIsPlaying && currentTrack?.id === beat.id;
+  const isThisTrackLoading = playerIsLoading && currentTrack?.id === beat.id;
 
-  const isCurrentlyPlaying = playerIsPlaying && currentTrack?.id === beat.id;
-  const isThisTrackLoading = playerIsLoading && currentTrack?.id === beat.id; // <-- Check if THIS track is loading
-
-  // Determine license details
   const availableLicenses = beat.licenses || [];
-  const hasMultipleLicenses = availableLicenses.length > 1;
-  const singleLicense = availableLicenses.length === 1 ? availableLicenses[0] : null;
-  // Calculate lowest price in CENTS first
-  const lowestPriceCents = availableLicenses.length > 0
-      ? Math.min(...availableLicenses.map(l => Number(l.price || 0) * 100)) // Ensure price is number, handle null/undefined
-      : 0;
-  // Format the lowest price for display
-  const formattedLowestPrice = formatPrice(lowestPriceCents / 100);
+  const cheapestLicense = useMemo(() => {
+    if (!availableLicenses || availableLicenses.length === 0) return null;
+    return availableLicenses.reduce((lowest, current) =>
+      (current.price < lowest.price ? current : lowest), availableLicenses[0]
+    );
+  }, [availableLicenses]);
 
-  // Recalculate based on selected items
   const licenseInCart = items.find(item => item.trackId === beat.id);
-  const isInCart = !!licenseInCart;
+  const isInCart = !!licenseInCart; // General check if any license for this beat is in cart
 
-  // Memoize the mapped list to avoid re-mapping on every render/click
+  // Update optimistic state based on actual cart state
+  React.useEffect(() => {
+    setIsOptimisticallyInCart(isInCart);
+  }, [isInCart]);
+
   const mappedFullList = useMemo(() => {
-    // Add a check to ensure fullTrackList is an array before mapping
     const isListArray = Array.isArray(fullTrackList);
     if (!isListArray) {
-      console.error("TrackCard received invalid fullTrackList prop:", fullTrackList); // Add logging
-      return []; // Return empty array if prop is not valid
+      console.error("TrackCard received invalid fullTrackList prop:", fullTrackList);
+      return [];
     }
     return fullTrackList.map((b, itemIndex) => {
         if (!b) {
-            // Decide how to handle invalid item: skip, return default, etc.
-            // Returning a default structure to prevent crash, but logs error.
             return { id: `invalid-${itemIndex}`, title: 'Invalid Item', artist: 'Error', audioSrc: '', coverImage: '', url: '' };
         }
         return {
-             id: b.id,
+             id: String(b.id), // Ensure ID is string
              title: b.title,
              artist: b.producerName,
-             audioSrc: b.audioSrc || '', // Ensure audioSrc exists and provide fallback
+             audioSrc: b.audioSrc || '',
              coverImage: b.imageUrl,
              url: b.beatUrl,
         };
     });
-  }, [fullTrackList]); // Removed beat.id as it's not directly used in the mapping
+  }, [fullTrackList]);
 
-  // --- Consistent isInCart check: Check if the SINGLE license (if applicable) is in cart ---
-  // This helps if we only allow removing the single license type from the card
-  const isSingleLicenseInCart = useMemo(() => {
-      if (!singleLicense) return false;
-      return items.some(item => item.trackId === beat.id && item.licenseId === singleLicense.id);
-  }, [items, beat.id, singleLicense]);
+  const beatPageUrl = beat.beatUrl || `/track/${beat.slug || beat.id}`;
+  const producerProfileUrl = beat.producerProfileUrl || (beat.producer ? `/u/${beat.producer.username}` : '#');
 
-  // Determine overall cart status (any license for this track)
-  // Used to potentially disable adding if *any* version is already added,
-  // preventing confusion if user tries to add while modal/panel should be used.
-  const isAnyLicenseInCart = useMemo(() => {
-      return items.some(item => item.trackId === beat.id);
-  }, [items, beat.id]);
+  const PlayPauseIcon = useMemo(() => {
+    if (isThisTrackLoading) return Loader2;
+    return isCurrentTrackPlaying ? Pause : Play;
+  }, [isThisTrackLoading, isCurrentTrackPlaying]);
 
-  // --- Event Handlers ---
-
-  const handlePlayPause = useCallback((e: React.MouseEvent) => {
-      e.stopPropagation(); // Prevent triggering card click
-
-      if (isCurrentlyPlaying) {
-          togglePlay(); // Pause the currently playing track
+  const handlePlayPauseClick = useCallback((e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (isCurrentTrackPlaying) {
+          togglePlay();
       } else {
-           // Check if the clicked beat is the one currently loaded (but paused)
            if (currentTrack?.id === beat.id) {
-               togglePlay(); // Resume the paused current track
+               togglePlay();
            } else {
-               // Otherwise, play this track (it's either new or different)
                if (beat.audioSrc) {
-                   // Map current beat to PlayerTrack format
                    const trackData: PlayerTrack = {
-                       id: beat.id,
+                       id: String(beat.id),
                        title: beat.title,
                        artist: beat.producerName,
-                       audioSrc: beat.audioSrc, // Pass the existing audioSrc
+                       audioSrc: beat.audioSrc,
                        coverImage: beat.imageUrl,
                        url: beat.beatUrl,
                    };
-
-                    // Call the store action to load and play this track from the list
                     playTrackFromList(trackData, mappedFullList, index);
                } else {
                    toast.error('No audio preview available for this beat.');
                }
            }
       }
-      // TODO: Track PostHog event: track_preview_played
-  }, [isCurrentlyPlaying, currentTrack, beat, togglePlay, playTrackFromList, mappedFullList, index]);
-
-  const handleCartActionClick = useCallback((e: React.MouseEvent) => {
-      e.stopPropagation();
-
-      if (isInCart && licenseInCart) {
-          removeItem(String(licenseInCart.trackId), licenseInCart.licenseId); // Pass trackId as string
-      } else if (hasMultipleLicenses) {
-          setIsLicenseModalOpen(true);
-      } else if (singleLicense) {
-           // Ensure price is converted to number before using
-          const priceNumber = Number(singleLicense.price || 0);
-          const cartItem: CartItem = {
-              trackId: String(beat.id), // Ensure trackId is string
-              licenseId: singleLicense.id,
-              trackTitle: beat.title,
-              producerName: beat.producerName,
-              price: Math.round(priceNumber * 100), // Ensure price is number before multiplying
-              imageUrl: beat.imageUrl,
-              licenseName: singleLicense.name,
-          };
-          addItem(cartItem);
-          toast.success(`License added to cart: ${singleLicense.name}`);
-          // TODO: Track PostHog event: license_added_from_modal
-          setIsLicenseModalOpen(false); // Close the modal
-      } else {
-          toast.error("No licenses available for this track.");
+      if (!isCurrentTrackPlaying && beat.audioSrc) {
+        posthog?.capture('track_preview_played', {
+            trackId: String(beat.id),
+            trackTitle: beat.title,
+            producerName: beat.producerName,
+            origin: 'track-card'
+        });
       }
-  }, [isInCart, licenseInCart, removeItem, addItem, hasMultipleLicenses, singleLicense, beat.id, beat.title, beat.producerName, beat.imageUrl]);
+  }, [isCurrentTrackPlaying, currentTrack, beat, togglePlay, playTrackFromList, mappedFullList, index, posthog]);
 
-  // Handler for opening the slide-out panel
-  const handleOpenSlideOut = useCallback(() => {
-      // Ensure beat.id is a string, as expected by the store/panel
-      const beatIdString = String(beat.id); // Ensure it's a string
-      if (beatIdString.length > 0) {
-          openSlideOut(beatIdString);
-      } else {
-          toast.error("Could not load beat details. Invalid ID.");
-      }
-  }, [beat.id, openSlideOut]);
+  // Placeholder for Like click
+  const handleLikeClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsFavorited(!isFavorited);
+    toast.info(isFavorited ? 'Removed from favorites' : 'Added to favorites (Feature WIP)');
+    // TODO: Implement actual like/unlike logic
+    posthog?.capture(isFavorited ? 'track_unliked' : 'track_liked', {
+        trackId: String(beat.id),
+        trackTitle: beat.title,
+        origin: 'track-card'
+    });
+  }, [isFavorited, beat.id, beat.title, posthog]);
 
-  const imageSrc = beat.imageUrl || 'https://via.placeholder.com/400x400/cccccc/9ca3af?text=No+Image'; // Use lighter placeholder for light mode potentially
+  // Updated Add to Cart from Card click
+  const handleAddToCartFromCard = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isOptimisticallyInCart && licenseInCart) { // If already in cart (optimistically or actually), remove it
+        removeItem(String(licenseInCart.trackId), licenseInCart.licenseId);
+        setIsOptimisticallyInCart(false);
+        toast.success(`Removed from cart: ${licenseInCart.trackTitle}`);
+        posthog?.capture('license_removed_from_cart', {
+            trackId: String(licenseInCart.trackId),
+            licenseId: licenseInCart.licenseId,
+            removedFrom: 'track-card'
+        });
+    } else if (availableLicenses.length === 1 && availableLicenses[0]) {
+        const singleLic = availableLicenses[0];
+        const priceNumber = Number(singleLic.price || 0);
+        const cartItemToAdd: CartItem = {
+            trackId: String(beat.id),
+            licenseId: singleLic.id,
+            trackTitle: beat.title,
+            producerName: beat.producerName,
+            price: Math.round(priceNumber * 100),
+            imageUrl: beat.imageUrl,
+            licenseName: singleLic.name,
+        };
+        addItem(cartItemToAdd);
+        setIsOptimisticallyInCart(true);
+        toast.success(`Added to cart: ${beat.title} - ${singleLic.name}`);
+        posthog?.capture('license_added_to_cart', {
+            trackId: String(beat.id),
+            licenseId: singleLic.id,
+            price: Math.round(priceNumber * 100),
+            addedFrom: 'track-card-direct'
+        });
+    } else {
+        // If multiple licenses or no licenses, open slide out panel to choose
+        openSlideOut(String(beat.id), 'pricing'); // <-- Call openSlideOut with tab
+        posthog?.capture('license_options_viewed', {
+            trackId: String(beat.id),
+            viewedFrom: 'track-card-cart-icon'
+        });
+    }
+  }, [isOptimisticallyInCart, licenseInCart, availableLicenses, beat, addItem, removeItem, openSlideOut, posthog]);
 
-  // TODO: Track PostHog event: favorite_added / favorite_removed
-  const handleFavoriteClick = useCallback(() => {
-      // Implementation of handleFavoriteClick
-  }, [beat.id]); // Add dependencies if needed
+  const handleCardClick = useCallback(() => {
+    openSlideOut(String(beat.id), 'overview'); // <-- Call openSlideOut with tab
+    posthog?.capture('track_details_viewed', {
+        trackId: String(beat.id),
+        openedFrom: 'track-card'
+    });
+  }, [beat, availableLicenses, openSlideOut, posthog]);
 
-  // Handler for when a license is selected *within* the modal
-  const handleLicenseSelectInModal = useCallback((license: License) => {
-      const priceNumber = Number(license.price || 0);
-      const cartItem: CartItem = {
-          trackId: String(beat.id),
-          licenseId: license.id,
-          name: beat.title,
-          artist: beat.producerName,
-          imageUrl: beat.imageUrl,
-          price: priceNumber, // Store price in cents if store expects that, otherwise already divided
-          licenseName: license.name,
-      };
-      addItem(cartItem);
-      toast.success(`License added to cart: ${license.name}`);
-      // TODO: Track PostHog event: license_added_from_modal
-      setIsLicenseModalOpen(false); // Close the modal
-  }, [addItem, beat.id, beat.title, beat.producerName, beat.imageUrl]);
+  const imageToDisplay = beat.imageUrl || beat.coverImageUrl; // New: only use actual URLs
 
-  // --- Component Rendering ---
-  if (isLoading) { // <-- Use the passed isLoading prop
+  // If no image URL, set loading to false immediately.
+  React.useEffect(() => {
+    if (!imageToDisplay) {
+      setIsImageLoading(false);
+    }
+  }, [imageToDisplay]);
+
+  if (isThisTrackLoading) { // Or use a more specific isThisTrackCardLoading if needed
+    return <TrackCardSkeleton displayMode={displayMode} variant={variant} />;
+  }
+
+  // Determine specific styles based on variant
+  const isListItem = variant === 'listitem';
+  const isDetailPage = variant === 'detailPage'; // For the sidebar card on track detail page
+
+  // --- DETAIL PAGE VARIANT LAYOUT ---
+  if (isDetailPage) {
     return (
-      <TrackCardSkeleton />
+      <div className={cn("w-full flex flex-col bg-neutral-800 rounded-lg shadow-lg", className)}>
+        {/* Image Section */}
+        <div className="relative aspect-square w-full overflow-hidden">
+          {isImageLoading && <Skeleton className="absolute inset-0 w-full h-full bg-neutral-700" />}
+          <Image 
+            src={imageToDisplay || '/placeholder-image.svg'} // Fallback placeholder
+            alt={beat.title || 'Track artwork'}
+            fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className={cn(
+              "object-cover transition-all duration-300 ease-in-out",
+              isImageLoading ? 'opacity-0' : 'opacity-100'
+            )}
+            onLoad={() => setIsImageLoading(false)}
+            onError={() => {
+              setIsImageLoading(false);
+              // Potentially set a flag to show a specific error/fallback for broken image
+            }}
+            priority // Important for LCP on detail pages
+          />
+          {/* Play/Pause Button Overlay - Centered */}
+          <button 
+            onClick={handlePlayPauseClick} 
+            aria-label={isCurrentTrackPlaying ? "Pause" : "Play"}
+            className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 focus:opacity-100 transition-opacity duration-200 group"
+          >
+            <PlayPauseIcon className={cn(
+              "h-16 w-16 text-white drop-shadow-lg",
+              isThisTrackLoading ? 'animate-spin' : ''
+            )} />
+          </button>
+        </div>
+
+        {/* Waveform Placeholder Section */}
+        <div className="h-24 bg-neutral-700/50 my-4 mx-4 rounded flex items-center justify-center">
+          <Music size={32} className="text-neutral-500" />
+          <span className="ml-2 text-neutral-500 text-sm">Waveform loading...</span>
+          {/* Later: <ActualWaveformComponent src={beat.waveformUrl} /> */}
+        </div>
+
+        {/* Info Section (Title, Producer) - Kept brief for detail page context */}
+        <div className="p-4 text-center">
+          <h3 className="text-lg font-semibold text-neutral-100 truncate" title={beat.title}>{beat.title}</h3>
+          <Link href={producerProfileUrl} className="text-xs text-cyan-glow hover:underline truncate block" title={beat.producerName}>
+            By {beat.producerName}
+          </Link>
+        </div>
+        
+        {/* Action Buttons (Like) */}
+        <div className="p-4 border-t border-neutral-700/50 flex justify-center">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={handleLikeClick} 
+            aria-label={isFavorited ? "Unlike track" : "Like track"}
+            className="text-muted-foreground hover:text-pink-500 data-[favorited=true]:text-pink-500"
+            data-favorited={isFavorited}
+          >
+            <Heart fill={isFavorited ? "currentColor" : "none"} className="w-5 h-5" />
+          </Button>
+          {/* Other actions like Share could go here */}
+        </div>
+      </div>
     );
   }
 
+  // --- DEFAULT/LISTITEM/COMPACT VARIANT LAYOUT ---
+  // Wrap the main card content in a button for accessibility
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault(); // Prevent page scroll on space
+      handleCardClick();
+    }
+  };
+
+  // --- DEFAULT/GRID LAYOUT ---
   return (
-    <>
-    <div
-      onClick={handleOpenSlideOut} // Add onClick handler here
+    <motion.div
+      onClick={handleCardClick}
+      onKeyDown={handleKeyDown}
       className={cn(
-          // Use themed background and border
-          "beat-card rounded-xl overflow-hidden group cursor-pointer", // Add cursor-pointer
-          "bg-card border border-border hover:border-primary/20", // Base card style
-          // "bg-gradient-to-br from-white/5 to-white/[.02]", // Remove old gradient
-          "transition-all duration-300 ease-in-out shadow-md hover:shadow-lg hover:shadow-primary/10", // Consistent shadow
-          "hover:!scale-[1.02] transform-gpu will-change-transform",
-          className
-      )}>
-      {/* Use themed background for image area */}
-      <div className="aspect-square relative overflow-hidden bg-secondary/30">
+        "group relative flex cursor-pointer flex-col overflow-hidden rounded-lg bg-neutral-800 shadow-lg transition-all duration-300 ease-in-out hover:shadow-xl hover:shadow-cyan-glow/20",
+        "transform-gpu will-change-transform", // Added for performance
+        className
+      )}
+      aria-label={`View details for ${beat.title}`}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: index * 0.05 }}
+      whileHover={{ scale: 1.03, transition: { duration: 0.2 } }}
+    >
+      {/* Image Section */}
+      <div className="relative overflow-hidden aspect-square w-full">
         {isImageLoading && (
-            <Skeleton className="absolute inset-0 w-full h-full rounded-none" />
+          <Skeleton className="absolute inset-0 w-full h-full bg-neutral-700" />
         )}
-        <Image
-          src={imageSrc}
-          alt={`${beat.title} cover art`}
-          fill
-          sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
-          className={cn(
-              "w-full h-full object-cover transition-opacity duration-300",
-              isImageLoading ? "opacity-0" : "opacity-70 group-hover:opacity-100" // Fade in image, keep hover effect
-          )}
-          // unoptimized // Keep or remove based on image source/optimization needs
-          priority={index < 3} // Add priority to first few images for LCP
-          onLoad={() => setIsImageLoading(false)} // Set loading false when image loads
-          onError={() => setIsImageLoading(false)} // Also set false on error to remove skeleton
-        />
-        {/* Play button overlay - Use themed background */}
-        <div className={cn(
-            "absolute inset-0 flex items-center justify-center bg-black/30 dark:bg-black/50 transition-opacity duration-300",
-            isImageLoading ? "opacity-0" : "opacity-0 group-hover:opacity-100"
-        )}>
-          <button
-            onClick={handlePlayPause}
-            disabled={!beat.audioSrc}
+        {imageToDisplay ? (
+          <Image
+            src={imageToDisplay}
+            alt={`Cover art for ${beat.title}`}
+            fill
+            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
             className={cn(
-                // Use themed button colors
-                "play-button w-14 h-14 rounded-full bg-background/60 dark:bg-white/20 backdrop-blur-sm flex items-center justify-center",
-                "transform scale-75 group-hover:scale-100 transition-transform duration-300",
-                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-75",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background/50"
+              "object-cover transition-all duration-500 ease-in-out",
+              isImageLoading ? 'opacity-0' : 'opacity-100'
             )}
-            aria-label={
-                isThisTrackLoading ? `Loading ${beat.title}` :
-                isCurrentlyPlaying ? `Pause ${beat.title}` :
-                `Play preview of ${beat.title}`
-            }
-           >
-             {/* Conditional Icon - Use themed text color */}
-             {isThisTrackLoading ? (
-                 <Loader2 size={24} className="text-foreground animate-spin" />
-             ) : isCurrentlyPlaying ? (
-                 <Pause size={24} className="text-foreground fill-foreground" />
-             ) : (
-                 <Play size={24} className="text-foreground fill-foreground ml-1" />
-             )}
-          </button>
-        </div>
-      </div>
-      {/* Use themed padding and background for info area */}
-      <div className="p-4 bg-card">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div
-                // Optionally make title clickable for slideout too, though card click handles it
-                // onClick={(e) => { e.stopPropagation(); handleOpenSlideOut(); }}
-                className="block group/link rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-             >
-                <h3 className="text-base font-medium text-foreground leading-tight truncate group-hover:text-primary transition-colors">
-                    {beat.title}
-                </h3>
-            </div>
-            {beat.producerProfileUrl ? (
-              <Link
-                href={beat.producerProfileUrl}
-                onClick={(e) => e.stopPropagation()} // Prevent card click when clicking producer link
-                className="text-sm text-muted-foreground hover:text-primary transition-colors inline-block mt-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-              >
-                {beat.producerName}
-              </Link>
-            ) : (
-                // Use themed text color
-               <p className="text-sm text-muted-foreground truncate">{beat.producerName}</p>
-            )}
-          </div>
-          <div className="flex flex-col items-end space-y-2">
+            priority={index < 4}
+            onLoad={() => setIsImageLoading(false)}
+            onError={() => setIsImageLoading(false)}
+          />
+        ) : (
+           <div className="absolute inset-0 w-full h-full bg-neutral-700 flex items-center justify-center">
+             <Music className="w-1/3 h-1/3 text-neutral-500" />
+           </div>
+        )}
+        {/* Overlay Buttons - Appear on Hover/Focus */}
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300 flex items-center justify-center p-2">
+          <div className="flex items-center space-x-2">
+            {/* Play/Pause Button */}
             <Button
               variant="ghost"
-              size="sm"
-              className={cn(
-                "flex-shrink-0 h-8 px-3 rounded-md flex items-center justify-center gap-1.5 transition-all duration-200 transform active:scale-95 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-black/50",
-                isInCart
-                  ? 'text-red-400 hover:bg-red-900/50' // Style for remove action
-                  : 'text-gray-400 hover:bg-indigo-600/20 hover:text-white' // Style for add action
-              )}
-              onClick={handleCartActionClick}
-              aria-label={isInCart ? `Remove ${beat.title} from cart` : `Add ${beat.title} to cart for ${formattedLowestPrice}`}
+              size="icon"
+              className="play-button bg-white/20 hover:bg-white/30 text-white rounded-full w-12 h-12 backdrop-blur-sm"
+              onClick={handlePlayPauseClick}
+              aria-label={isCurrentTrackPlaying ? `Pause ${beat.title}` : `Play ${beat.title}`}
             >
-              {isInCart ? <MinusCircle size={16} /> : <ShoppingCart size={16} />}
-              <span className="text-xs whitespace-nowrap">
-                {isInCart ? 'Remove' : formattedLowestPrice}
-              </span>
+              <PlayPauseIcon className={cn("w-6 h-6", isCurrentTrackPlaying && "ml-0.5")} />
             </Button>
-
-            {/* Use themed text color for BPM/Key */}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {beat.bpm &&
-                <span className="flex items-center gap-1">
-                     {/* Use themed icon color */}
-                    <Clock size={12} className="text-muted-foreground/70" />
-                    {beat.bpm} BPM
-                </span>
-              }
-              {beat.bpm && beat.key && <span className="opacity-50">•</span>}
-              {beat.key &&
-                <span className="flex items-center gap-1">
-                     {/* Use themed icon color */}
-                    <Music size={12} className="text-muted-foreground/70"/>
-                    {beat.key}
-                </span>
-              }
-            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    {/* License Modal (Conditionally Rendered outside the main card div) */}
-    {hasMultipleLicenses && (
-      <LicenseModal
-        isOpen={isLicenseModalOpen}
-        onClose={() => setIsLicenseModalOpen(false)}
-        beat={beat} // Pass the beat data
-        onLicenseSelect={handleLicenseSelectInModal} // Pass the handler
-      />
-    )}
-    </>
+      {/* Content Section */}
+      <div className={cn("p-3 sm:p-4", isListItem ? "flex-grow flex justify-between items-center" : "")}>
+        <div className={cn("flex-grow", isListItem ? "mr-4" : "")}>
+          {/* Track Title */}
+          <h3 className={cn("font-semibold text-sm sm:text-base text-foreground truncate", isListItem ? "" : "mb-0.5")}>
+            {beat.title}
+          </h3>
+          {/* Producer Info */}
+          <Link
+            href={producerProfileUrl}
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs sm:text-sm text-muted-foreground hover:text-cyan-glow transition-colors duration-150 inline-block relative focus:outline-none focus-visible:ring-1 focus-visible:ring-cyan-glow/80 rounded-sm"
+          >
+            {beat.producerName}
+          </Link>
+        </div>
+
+        {/* Actions (Like/Cart) */}
+        <div className={cn(
+          "flex items-center flex-shrink-0", 
+          isListItem ? "gap-2" : "gap-1 sm:gap-1.5 mt-3 justify-end"
+        )}>
+          {/* Like Button */}
+          <Button
+            variant="ghost"
+            size={isListItem ? "icon" : "sm"}
+            className={cn(
+              "text-neutral-400 hover:text-pink-500 hover:bg-pink-500/10 focus-visible:ring-pink-500 rounded-full",
+              isListItem ? "w-8 h-8" : "w-7 h-7 sm:w-8 sm:h-8",
+              isFavorited && "text-pink-500"
+            )}
+            onClick={handleLikeClick}
+            aria-label={isFavorited ? `Unlike ${beat.title}` : `Like ${beat.title}`}
+          >
+            <Heart size={isListItem ? 16 : 14} fill={isFavorited ? 'currentColor' : 'none'} />
+          </Button>
+          
+          {/* Cart/License Button */}
+          {cheapestLicense && (
+            <Button
+              variant={isOptimisticallyInCart ? "luminousOutline" : "luminous"}
+              size={isListItem ? "sm" : "sm"}
+              className={cn(
+                "cart-button transition-all duration-150 ease-in-out",
+                isListItem ? "px-3 py-1.5 h-8" : "px-2.5 py-1 h-7 sm:px-3 sm:py-1.5 sm:h-8 text-xs sm:text-sm",
+                isOptimisticallyInCart ? "border-cyan-glow text-cyan-glow hover:bg-cyan-glow/10" : "shadow-glow-cyan-xs"
+              )}
+              onClick={handleAddToCartFromCard}
+              aria-label={
+                isOptimisticallyInCart && licenseInCart
+                  ? `Remove ${beat.title} - ${licenseInCart.licenseName} from cart`
+                  : availableLicenses.length === 1
+                  ? `Add ${beat.title} - ${availableLicenses[0].name} to cart`
+                  : `View license options for ${beat.title}`
+              }
+            >
+              {isOptimisticallyInCart ? (
+                <>
+                  <Check size={14} className="mr-1.5" /> Added
+                </>
+              ) : (
+                <>
+                  <ShoppingCart size={14} className="mr-1.5" />
+                  {formatPrice(cheapestLicense.price)}
+                  {availableLicenses.length > 1 && <span className="ml-1">+</span>}
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Keyboard Navigation Hint */}
+      <div className="absolute bottom-1 right-1 opacity-0 group-focus-within:opacity-100 transition-opacity duration-200">
+        <span className="text-xs text-neutral-400 px-1.5 py-0.5 bg-neutral-900/70 rounded">Tab</span>
+      </div>
+    </motion.div>
   );
-}
+};
+
+export default TrackCardComponent;

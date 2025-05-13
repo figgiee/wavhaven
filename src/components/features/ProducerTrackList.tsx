@@ -23,10 +23,13 @@ import {
 import { deleteTrack, deleteMultipleTracks } from '@/server-actions/trackActions';
 import { toast } from 'sonner';
 import { Checkbox } from "@/components/ui/checkbox";
+import { ExternalLink } from 'lucide-react';
 
 interface ProducerTrackListProps {
   tracks: TrackListItem[];
 }
+
+const ITEMS_PER_PAGE = 5;
 
 export default function ProducerTrackList({ tracks }: ProducerTrackListProps) {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
@@ -238,7 +241,7 @@ export default function ProducerTrackList({ tracks }: ProducerTrackListProps) {
                         }
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-4 bg-popover border border-border">
+                    <PopoverContent className="w-auto p-4 bg-popover border border-[hsl(var(--border))]">
                       <div className="space-y-2">
                         <p className="text-sm font-medium">Are you sure?</p>
                         <p className="text-sm text-muted-foreground">

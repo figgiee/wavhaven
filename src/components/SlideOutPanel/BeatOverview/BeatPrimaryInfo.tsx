@@ -11,8 +11,7 @@ interface BeatPrimaryInfoProps {
   duration: number;
   packageDiscountAvailable: boolean;
   beatUrl: string;
-  // TODO: Add producerUrl later
-  // producerUrl?: string;
+  producerUrl?: string; // Add producerUrl as an optional prop
 }
 
 // Placeholder - implement if not existing
@@ -28,6 +27,7 @@ export const BeatPrimaryInfo: React.FC<BeatPrimaryInfoProps> = ({
   // duration, // Comment out duration for now
   packageDiscountAvailable,
   beatUrl,
+  producerUrl, // Destructure producerUrl
 }) => {
   // TODO: Replace 'verified' with actual producer tier/status from data
   const producerBadgeType = 'verified';
@@ -36,10 +36,17 @@ export const BeatPrimaryInfo: React.FC<BeatPrimaryInfoProps> = ({
     <div className="space-y-2">
       {/* Producer Info */}
       <div className="flex items-center justify-center sm:justify-start">
-        {/* TODO: Make producer name a Link */}
-        <span className="text-sm text-gray-400 hover:text-white transition-colors">
-          {producer.name ?? 'Unknown Producer'} {/* Use producer.name here */}
-        </span>
+        {/* TODO: Make producer name a Link - now implemented if producerUrl is provided */}
+        {/* TODO: Ensure producerUrl is passed from BeatOverviewSection once available in AdaptedBeatData */}
+        {producerUrl ? (
+          <Link href={producerUrl} className="text-sm text-gray-400 hover:text-white transition-colors">
+            {producer.name ?? 'Unknown Producer'}
+          </Link>
+        ) : (
+          <span className="text-sm text-gray-400">
+            {producer.name ?? 'Unknown Producer'}
+          </span>
+        )}
         {/* TODO: Pass actual producer tier type */}
         <ArtistBadge type={producerBadgeType} />
       </div>

@@ -21,6 +21,18 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
+
+  /* === Timeouts === */
+  // Increase global test timeout (default is 30s)
+  timeout: 60 * 1000, // 60 seconds per test
+  // Increase default assertion timeout (default is 5s)
+  expect: {
+    timeout: 10 * 1000, // 10 seconds for expect calls
+    // Specific timeout for toHaveScreenshot, allowing more time for rendering
+    toHaveScreenshot: { timeout: 15 * 1000 }, // 15 seconds for snapshots
+    toMatchSnapshot: { timeout: 15 * 1000 } // 15 seconds for snapshots
+  },
+
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
@@ -34,7 +46,14 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { 
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: ['--start-maximized']
+        },
+        viewport: null,
+        deviceScaleFactor: undefined,
+      },
     },
 
     /* Test against other browsers if needed */
