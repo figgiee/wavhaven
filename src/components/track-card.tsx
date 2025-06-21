@@ -13,8 +13,7 @@ import { PlayerTrack } from '@/types'; // <-- Import PlayerTrack type
 import { toast } from 'sonner'; // Import toast
 import { Skeleton } from '@/components/ui/skeleton'; // <-- Import Skeleton
 import { Button } from '@/components/ui/button';
-import { formatCurrency, formatPrice } from '@/lib/utils';
-import { useAudioPlayer } from '@/stores/useAudioPlayer';
+import { formatPrice } from '@/lib/utils';
 import { useUIStore } from '@/stores/use-ui-store'; // <-- Import useUIStore
 import type { Beat } from '@/types'; // Ensure Beat is imported from global types
 import { Share2Icon } from '@radix-ui/react-icons';
@@ -105,7 +104,7 @@ const TrackCardComponent: React.FC<TrackCardProps> = ({ // Rename component func
       console.error("TrackCard received invalid fullTrackList prop:", fullTrackList);
       return [];
     }
-    return fullTrackList.map((b, itemIndex) => {
+    return fullTrackList.map((b, itemIndex): PlayerTrack => {
         if (!b) {
             return { id: `invalid-${itemIndex}`, title: 'Invalid Item', artist: 'Error', audioSrc: '', coverImage: '', url: '' };
         }
@@ -114,14 +113,14 @@ const TrackCardComponent: React.FC<TrackCardProps> = ({ // Rename component func
              title: b.title,
              artist: b.producerName,
              audioSrc: b.audioSrc || '',
-             coverImage: b.imageUrl,
+             coverImage: b.imageUrl ?? undefined,
              url: b.beatUrl,
         };
     });
   }, [fullTrackList]);
 
   const beatPageUrl = beat.beatUrl || `/track/${beat.slug || beat.id}`;
-  const producerProfileUrl = beat.producerProfileUrl || (beat.producer ? `/u/${beat.producer.username}` : '#');
+  const producerProfileUrl = beat.producerName ? `/u/${beat.producerName}` : '#';
 
   const PlayPauseIcon = useMemo(() => {
     if (isThisTrackLoading) return Loader2;
@@ -142,7 +141,7 @@ const TrackCardComponent: React.FC<TrackCardProps> = ({ // Rename component func
                        title: beat.title,
                        artist: beat.producerName,
                        audioSrc: beat.audioSrc,
-                       coverImage: beat.imageUrl,
+                       coverImage: beat.imageUrl ?? undefined,
                        url: beat.beatUrl,
                    };
                     playTrackFromList(trackData, mappedFullList, index);
@@ -223,7 +222,7 @@ const TrackCardComponent: React.FC<TrackCardProps> = ({ // Rename component func
         trackId: String(beat.id),
         openedFrom: 'track-card'
     });
-  }, [beat, availableLicenses, openSlideOut, posthog]);
+  }, [beat, openSlideOut, posthog]);
 
   const imageToDisplay = beat.imageUrl || beat.coverImageUrl; // New: only use actual URLs
 
@@ -324,9 +323,8 @@ const TrackCardComponent: React.FC<TrackCardProps> = ({ // Rename component func
   return (
     <motion.div
       onClick={handleCardClick}
-      onKeyDown={handleKeyDown}
       className={cn(
-        "group relative flex cursor-pointer flex-col overflow-hidden rounded-lg bg-neutral-800 shadow-lg transition-all duration-300 ease-in-out hover:shadow-xl hover:shadow-cyan-glow/20",
+        "group relative flex cursor-pointer flex-col overflow-hidden rounded-lg bg-neutral-800 shadow-lg transition-all duration-150 ease-linear hover:shadow-xl hover:shadow-cyan-glow/20",
         "transform-gpu will-change-transform", // Added for performance
         className
       )}
@@ -334,7 +332,7 @@ const TrackCardComponent: React.FC<TrackCardProps> = ({ // Rename component func
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index * 0.05 }}
-      whileHover={{ scale: 1.03, transition: { duration: 0.2 } }}
+      whileHover={{ scale: 1.03, transition: { duration: 0.15, ease: "linear" } }}
     >
       {/* Image Section */}
       <div className="relative overflow-hidden aspect-square w-full">
@@ -348,7 +346,7 @@ const TrackCardComponent: React.FC<TrackCardProps> = ({ // Rename component func
             fill
             sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
             className={cn(
-              "object-cover transition-all duration-500 ease-in-out",
+              "object-cover transition-all duration-200 ease-linear",
               isImageLoading ? 'opacity-0' : 'opacity-100'
             )}
             priority={index < 4}
@@ -361,7 +359,7 @@ const TrackCardComponent: React.FC<TrackCardProps> = ({ // Rename component func
            </div>
         )}
         {/* Overlay Buttons - Appear on Hover/Focus */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300 flex items-center justify-center p-2">
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 ease-linear flex items-center justify-center p-2">
           <div className="flex items-center space-x-2">
             {/* Play/Pause Button */}
             <Button
@@ -417,7 +415,7 @@ const TrackCardComponent: React.FC<TrackCardProps> = ({ // Rename component func
           {/* Cart/License Button */}
           {cheapestLicense && (
             <Button
-              variant={isOptimisticallyInCart ? "luminousOutline" : "luminous"}
+              variant={isOptimisticallyInCart ? "luminous-outline" : "default"}
               size={isListItem ? "sm" : "sm"}
               className={cn(
                 "cart-button transition-all duration-150 ease-in-out",

@@ -95,7 +95,7 @@ export function AudioPlayerContainer() {
       // Connect Howler's masterGain to the analyser
       // Note: Accessing _node is internal, might break in future Howler versions
       // Consider exposing gain node if possible via Howler's API or managing context separately
-      const sourceNode = (Howler as any).masterGain; // Use master gain as the source
+      const sourceNode: AudioNode = (Howler as any).masterGain; // Use master gain as the source
       if (!sourceNode) {
           console.error("[Viz] Could not get Howler's master gain node.");
           analyserRef.current = null; // Reset refs if connection failed
@@ -266,7 +266,7 @@ export function AudioPlayerContainer() {
       const newHowl = new Howl({
         src: [currentTrack.audioSrc],
         html5: true,
-        volume: volume,
+        volume: volume / 100,
         mute: isMuted,
         loop: loopMode === 'one',
         onload: () => {
@@ -388,11 +388,10 @@ export function AudioPlayerContainer() {
         cleanupHowl();
     };
     // Dependencies: Explicitly depend on things that require a *new* Howl instance
-  }, [currentTrack?.id, currentTrack?.audioSrc, /* removed other deps like loopMode etc */
-      cleanupHowl, setupVisualization, drawVisualization, cleanupVisualization, // Add viz functions
-      setError, setLoading, setPlayState, updateCurrentTime, // Keep store setters
-      loopMode, playNext, // Keep loopMode and playNext for onend logic
-      hasCountedPlayRef, playCountIntervalRef // Add playCountIntervalRef as dependency
+  }, [currentTrack?.id, currentTrack?.audioSrc, currentTrack?.title, volume, isMuted, setError, // Added setError back
+      cleanupHowl, setupVisualization, drawVisualization, cleanupVisualization, 
+      setLoading, setPlayState, updateCurrentTime, 
+      loopMode, playNext, 
   ]);
 
   // --- Sync Store Play State -> Howler ---
@@ -416,7 +415,7 @@ export function AudioPlayerContainer() {
     const howl = howlRef.current;
     if (howl) {
       howl.mute(isMuted);
-      howl.volume(volume);
+      howl.volume(volume / 100);
     }
   }, [volume, isMuted]);
 
