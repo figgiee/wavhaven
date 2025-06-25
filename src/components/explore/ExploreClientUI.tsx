@@ -1,11 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useTransition } from 'react';
-import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Search, LayoutGrid, List, ChevronDown, Loader2, AlertCircle, ListFilter, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrackCard } from '@/components/track-card';
-import { FilterSidebar, AppliedFilters as FilterSidebarAppliedFilters } from '@/components/explore/FilterSidebar';
+import { FilterSidebar } from '@/components/explore/filter-sidebar';
 import { ActiveFilters } from '@/components/explore/active-filters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,21 +25,16 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { cn } from '@/lib/utils';
-import { Skeleton } from "@/components/ui/skeleton";
 import { TrackCardSkeleton } from '@/components/track-card-skeleton';
-import { SlideOutPanel } from '@/components/SlideOutPanel/SlideOutPanel';
 import { TrackGrid } from "@/components/explore/TrackGrid";
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
-import { searchTracks } from '@/server-actions/trackActions';
-import type { TrackSearchResult } from '@/server-actions/trackActions';
-import type { Beat } from '@/types';
+import { useExploreFilters } from '@/hooks/useExploreFilters';
+import { useTrackSearch } from '@/hooks/useTrackSearch';
+import type { SortOrder, LayoutMode } from '@/hooks/useExploreFilters';
 
 // --- Constants ---
 const ITEMS_PER_PAGE = 9;
-const DEFAULT_BPM_RANGE: [number, number] = [60, 180];
-const DEFAULT_PRICE_RANGE: [number, number] = [0, 200];
-type LayoutMode = 'grid' | 'list';
-type SortOrder = 'relevance' | 'newest' | 'price_asc' | 'price_desc';
+
 const sortOptions: { value: SortOrder; label: string }[] = [
     { value: 'relevance', label: 'Relevance' },
     { value: 'newest', label: 'Newest' },
@@ -50,302 +42,55 @@ const sortOptions: { value: SortOrder; label: string }[] = [
     { value: 'price_desc', label: 'Price: High to Low' },
 ];
 
-// --- Types ---
-export interface ExplorePageFilters {
-  q?: string; // Keyword from search bar
-  genre?: string;
-  mood?: string;
-  minBpm?: number;
-  maxBpm?: number;
-  key?: string;
-  minPrice?: number;
-  maxPrice?: number;
-  licenseTypes?: string[]; // Assuming LicenseType enum values are strings
-  contentType?: string; // Example other filter
-}
-
 // --- Props for the Client Component ---
 interface ExploreClientUIProps {
   serverSearchParams: { [key: string]: string | string[] | undefined };
 }
 
-// --- Debounce Function (Consider moving to utils) ---
-const debounce = (func: (...args: any[]) => void, delay: number) => {
-  let timeoutId: NodeJS.Timeout;
-  return (...args: any[]) => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-          func(...args);
-      }, delay);
-  };
-};
-
-// Helper function to parse filters from URL Search Params
-const parseFiltersFromParams = (params: URLSearchParams): ExplorePageFilters => {
-  const licenseTypes = params.getAll('license');
-  return {
-    q: params.get('q') || undefined,
-    contentType: params.get('type') || undefined,
-    genre: params.get('genre') || undefined,
-    mood: params.get('mood') || undefined,
-    key: params.get('key') || undefined,
-    minBpm: params.has('bpm_min') ? parseInt(params.get('bpm_min')!, 10) : undefined,
-    maxBpm: params.has('bpm_max') ? parseInt(params.get('bpm_max')!, 10) : undefined,
-    minPrice: params.has('min_price') ? parseInt(params.get('min_price')!, 10) : undefined,
-    maxPrice: params.has('max_price') ? parseInt(params.get('max_price')!, 10) : undefined,
-    licenseTypes: licenseTypes.length > 0 ? licenseTypes : undefined,
-  };
-};
-
 // --- The Client Component ---
 export const ExploreClientUI: React.FC<ExploreClientUIProps> = ({ serverSearchParams }) => {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  // Use custom hooks for filter management and track search
+  const {
+    filters,
+    sortOrder,
+    currentPage,
+    searchTerm,
+    layoutMode,
+    isPending,
+    handleSidebarFiltersApplied,
+    handleSearchInputChange,
+    handleClearFilter,
+    handleClearAllFilters,
+    handleLayoutChange,
+    handleSortChange,
+    handlePageChange,
+    handleClearSearch,
+    getActiveFilterItems,
+  } = useExploreFilters();
 
-  const [filters, setFilters] = useState<ExplorePageFilters>(() => parseFiltersFromParams(searchParams));
-  const [sortOrder, setSortOrder] = useState<SortOrder>(() => (searchParams.get('sort') as SortOrder) || 'relevance');
-  const [currentPage, setCurrentPage] = useState<number>(() => parseInt(searchParams.get('page') || '1', 10));
-  const [isDesktopFilterOpen, setIsDesktopFilterOpen] = useState(false);
+  const {
+    displayedBeats,
+    currentTotalCount,
+    isLoading,
+    error,
+  } = useTrackSearch();
 
-  const [searchTerm, setSearchTerm] = useState<string>(() => searchParams.get('q') || '');
-
-  const [displayedBeats, setDisplayedBeats] = useState<Beat[]>([]);
-  const [currentTotalCount, setCurrentTotalCount] = useState(0);
-
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>('grid');
-
-  useEffect(() => {
-    const currentParams = new URLSearchParams(searchParams.toString());
-    const newParams = new URLSearchParams();
-
-    if (filters.q) newParams.set('q', filters.q);
-    if (filters.contentType) newParams.set('type', filters.contentType);
-    if (filters.genre) newParams.set('genre', filters.genre);
-    if (filters.mood) newParams.set('mood', filters.mood);
-    if (filters.minBpm !== undefined) newParams.set('bpm_min', filters.minBpm.toString());
-    if (filters.maxBpm !== undefined) newParams.set('bpm_max', filters.maxBpm.toString());
-    if (filters.key) newParams.set('key', filters.key);
-    if (filters.minPrice !== undefined) newParams.set('min_price', filters.minPrice.toString());
-    if (filters.maxPrice !== undefined) newParams.set('max_price', filters.maxPrice.toString());
-    filters.licenseTypes?.forEach(lt => newParams.append('license', lt));
-    if (sortOrder !== 'relevance') newParams.set('sort', sortOrder);
-    if (currentPage > 1) newParams.set('page', currentPage.toString());
-
-    const newParamsString = newParams.toString();
-    const currentParamsString = currentParams.toString();
-
-    if (newParamsString !== currentParamsString) {
-        startTransition(() => {
-            router.push(`${pathname}?${newParamsString}`, { scroll: false });
-        });
-    }
-  }, [filters, sortOrder, currentPage, router, pathname, searchParams]);
-
-  useEffect(() => {
-    setIsLoading(true);
-    setError(null);
-
-    const currentFilters = parseFiltersFromParams(searchParams);
-    const currentSort = (searchParams.get('sort') as SortOrder) || 'relevance';
-    const currentPageNum = parseInt(searchParams.get('page') || '1', 10);
-
-    const actionParams = {
-        ...currentFilters,
-        sort: currentSort,
-        page: currentPageNum,
-        limit: ITEMS_PER_PAGE,
-    };
-
-    searchTracks(actionParams) 
-      .then(({ tracks: searchResultTracks, totalCount }) => {
-        const mappedTracks: Beat[] = searchResultTracks.map(track => ({
-            id: track.id,
-            title: track.title,
-            slug: track.slug,
-            description: track.description ?? undefined,
-            bpm: track.bpm ?? undefined,
-            key: track.key ?? undefined,
-            imageUrl: (track.coverImageUrl && track.coverImageUrl.trim() !== '') ? track.coverImageUrl : undefined,
-            coverImageUrl: (track.coverImageUrl && track.coverImageUrl.trim() !== '') ? track.coverImageUrl : undefined,
-            audioSrc: (track.previewAudioUrl && track.previewAudioUrl.trim() !== '') ? track.previewAudioUrl : undefined,
-            previewAudioUrl: (track.previewAudioUrl && track.previewAudioUrl.trim() !== '') ? track.previewAudioUrl : undefined,
-            beatUrl: `/track/${track.slug}`,
-            producer: track.producer ? {
-                id: track.producer.id,
-                username: track.producer.username,
-                profileImageUrl: track.producer.profileImageUrl ?? undefined,
-            } : undefined,
-            producerName: track.producer?.username || "Unknown Producer",
-            producerProfileUrl: track.producer?.username ? `/u/${track.producer.username}` : undefined,
-            licenses: (track.licenses as any[]) || [],
-            tags: track.tags ? track.tags.map(tag => ({ id: tag.id, name: tag.name })) : [],
-            playCount: track.playCount,
-            likeCount: track.likeCount,
-            commentCount: track._count?.comments ?? 0,
-            createdAt: track.createdAt,
-          }));
-        setDisplayedBeats(mappedTracks);
-        setCurrentTotalCount(totalCount);
-      })
-      .catch((err) => {
-        console.error("Error fetching tracks:", err);
-        setError("Failed to load tracks. Please try again.");
-        setDisplayedBeats([]);
-        setCurrentTotalCount(0);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-
-  }, [searchParams]);
-
-  useEffect(() => {
-      const parsedFilters = parseFiltersFromParams(searchParams);
-      const parsedSort = (searchParams.get('sort') as SortOrder) || 'relevance';
-      const parsedPage = parseInt(searchParams.get('page') || '1', 10);
-      const parsedSearchTerm = searchParams.get('q') || '';
-
-      if (JSON.stringify(parsedFilters) !== JSON.stringify(filters)) {
-          setFilters(parsedFilters);
-      }
-      if (parsedSort !== sortOrder) {
-          setSortOrder(parsedSort);
-      }
-      if (parsedPage !== currentPage) {
-          setCurrentPage(parsedPage);
-      }
-      if (parsedSearchTerm !== searchTerm) {
-          setSearchTerm(parsedSearchTerm);
-      }
-  }, [searchParams, filters, sortOrder, currentPage, searchTerm]);
-
-  const handleSidebarFiltersApplied = useCallback((sidebarFilters: FilterSidebarAppliedFilters) => {
-    setFilters(prevFilters => ({
-      ...prevFilters,
-      genre: sidebarFilters.genre,
-      mood: sidebarFilters.mood,
-      minBpm: sidebarFilters.minBpm,
-      maxBpm: sidebarFilters.maxBpm,
-      key: sidebarFilters.key,
-      minPrice: sidebarFilters.minPrice,
-      maxPrice: sidebarFilters.maxPrice,
-      licenseTypes: sidebarFilters.licenseTypes as string[],
-    }));
-    setCurrentPage(1);
-  }, []);
-
-  const debouncedSetSearchKeyword = useCallback(
-    debounce((term: string) => {
-      setFilters(prevFilters => ({ ...prevFilters, q: term || undefined }));
-      setCurrentPage(1);
-    }, 500),
-    []
-  );
-
-  const handleSearchInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const term = event.target.value;
-    setSearchTerm(term);
-    debouncedSetSearchKeyword(term);
-  };
-
-  const handleClearFilter = useCallback((filterKey: keyof ExplorePageFilters) => {
-    setFilters(prevFilters => {
-      const newFilters = { ...prevFilters };
-      if (filterKey !== 'q' && filterKey !== 'contentType') { 
-        newFilters[filterKey] = undefined; 
-      }
-      if (filterKey === 'licenseTypes') {
-        newFilters.licenseTypes = undefined;
-      }
-      return newFilters;
-    });
-    setCurrentPage(1); 
-  }, []);
-
-  const handleClearAllFilters = useCallback(() => {
-    setFilters(prevFilters => ({
-      q: prevFilters.q, 
-      contentType: prevFilters.contentType,
-      genre: undefined,
-      mood: undefined,
-      minBpm: undefined,
-      maxBpm: undefined,
-      key: undefined,
-      minPrice: undefined,
-      maxPrice: undefined,
-      licenseTypes: undefined,
-    }));
-    setCurrentPage(1); 
-  }, []);
-
-  const handleLayoutChange = (mode: LayoutMode) => setLayoutMode(mode);
-  const handleSortChange = (order: SortOrder) => {
-    setSortOrder(order);
-    setCurrentPage(1);
-  };
-  const handlePageChange = (newPage: number) => {
-    if (newPage >= 1 && newPage <= Math.ceil(currentTotalCount / ITEMS_PER_PAGE)) {
-      setCurrentPage(newPage);
-      window.scrollTo(0, 0);
-    }
-  };
-
+  // Calculate pagination
   const totalPages = Math.ceil(currentTotalCount / ITEMS_PER_PAGE);
+  const activeFilterItems = getActiveFilterItems();
 
-  const activeFilterItems = Object.entries(filters)
-    .map(([key, value]) => {
-      if (!value || (Array.isArray(value) && value.length === 0)) return null;
-      let label = '';
-      let displayValue = '';
-      if (key === 'q') { label = 'Keyword'; displayValue = String(value); }
-      else if (key === 'genre') { label = 'Genre'; displayValue = String(value); }
-      else if (key === 'mood') { label = 'Mood'; displayValue = String(value); }
-      else if (key === 'key') { label = 'Key'; displayValue = String(value); }
-      else if (key === 'minBpm' && filters.maxBpm) { label = 'BPM'; displayValue = `${filters.minBpm}-${filters.maxBpm}`; }
-      else if (key === 'minPrice' && filters.maxPrice) { label = 'Price'; displayValue = `$${filters.minPrice}-$${filters.maxPrice}`; }
-      else if (key === 'licenseTypes') { label = 'Licenses'; displayValue = (value as string[]).join(', '); }
-      else if (key === 'contentType') { label = 'Type'; displayValue = String(value); }
-      else if ((key === 'minBpm' && !filters.maxBpm) || (key === 'maxBpm' && !filters.minBpm)) { return null; }
-      else if ((key === 'minPrice' && !filters.maxPrice) || (key === 'maxPrice' && !filters.minPrice)) { return null; }
-
-      if (label && displayValue) {
-        return { id: key, label, value: displayValue };
-      }
-      return null;
-    })
-    .filter(item => item !== null) as { id: string; label: string; value: string }[];
-
+  // UI event handlers
   const handleRemoveFilter = (filterId: string) => {
-    setFilters(prev => {
-      const newFilters = { ...prev };
-      if (filterId === 'minBpm' || filterId === 'maxBpm' || filterId === 'bpm') {
-        delete newFilters.minBpm;
-        delete newFilters.maxBpm;
-      } else if (filterId === 'minPrice' || filterId === 'maxPrice' || filterId === 'price') {
-        delete newFilters.minPrice;
-        delete newFilters.maxPrice;
-      } else if (filterId === 'licenseTypes') {
-        newFilters.licenseTypes = [];
-      }
-      else {
-        delete (newFilters as any)[filterId];
-      }
-      return newFilters;
-    });
-    setCurrentPage(1);
+    handleClearFilter(filterId as keyof typeof filters);
   };
 
-  const handleClearSearch = () => {
-    setSearchTerm('');
-    setFilters(prevFilters => ({ ...prevFilters, q: undefined }));
-    setCurrentPage(1);
+  const handlePageChangeWithValidation = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      handlePageChange(newPage);
+    }
   };
 
+  // --- Render Functions ---
   const renderContent = () => {
     if (isLoading && displayedBeats.length === 0) {
       return (
@@ -388,77 +133,13 @@ export const ExploreClientUI: React.FC<ExploreClientUIProps> = ({ serverSearchPa
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-x-8 gap-y-6 relative">
-      <div className="hidden lg:flex lg:flex-col space-y-4 sticky top-[calc(var(--site-header-height,4rem)+1rem)] h-fit self-start">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => setIsDesktopFilterOpen(!isDesktopFilterOpen)}
-          className="self-start" 
-          aria-label={isDesktopFilterOpen ? "Close filters" : "Open filters"}
-          aria-expanded={isDesktopFilterOpen}
-        >
-          <ListFilter className="h-5 w-5" />
-        </Button>
-        <AnimatePresence>
-          {isDesktopFilterOpen && (
-            <motion.div
-              key="desktop-filter-sidebar"
-              className="w-full lg:w-[280px] xl:w-[320px]"
-              initial={{ opacity: 0, width: 0, x: "-100%" }}
-              animate={{ opacity: 1, width: "auto", x: "0%" }}
-              exit={{ opacity: 0, width: 0, x: "-100%", transition: { duration: 0.25 } }}
-              transition={{ duration: 0.35, ease: "circOut" }}
-              style={{ overflow: 'hidden' }}
-            >
-              <FilterSidebar
-                initialFilters={filters}
-                onApplyFilters={handleSidebarFiltersApplied}
-                allGenres={[]}
-                allMoods={[]}
-                allKeys={[]}
-                defaultBpmRange={DEFAULT_BPM_RANGE}
-                currentBpmRange={[filters.minBpm ?? DEFAULT_BPM_RANGE[0], filters.maxBpm ?? DEFAULT_BPM_RANGE[1]]}
-                defaultPriceRange={DEFAULT_PRICE_RANGE}
-                currentPriceRange={[filters.minPrice ?? DEFAULT_PRICE_RANGE[0], filters.maxPrice ?? DEFAULT_PRICE_RANGE[1]]}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+    <div className="flex flex-col lg:flex-row gap-6 min-h-screen">
+      {/* Desktop Filter Sidebar */}
+      <div className="hidden lg:block lg:w-80 flex-shrink-0">
+        <FilterSidebar onFiltersApplied={handleSidebarFiltersApplied} />
       </div>
 
-      <div className="lg:hidden">
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button variant="outline" className="w-full justify-start text-base py-3">
-              <ListFilter className="mr-2 h-5 w-5" />
-              Filters & Sort
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-[320px] sm:w-[380px] p-0 flex flex-col">
-            <SheetHeader className="p-4 border-b">
-              <SheetTitle>Filters</SheetTitle>
-            </SheetHeader>
-            <div className="flex-grow overflow-y-auto">
-              <FilterSidebar
-                initialFilters={filters}
-                onApplyFilters={(appliedFilters) => {
-                  handleSidebarFiltersApplied(appliedFilters);
-                }}
-                allGenres={[]}
-                allMoods={[]}
-                allKeys={[]}
-                defaultBpmRange={DEFAULT_BPM_RANGE}
-                currentBpmRange={[filters.minBpm ?? DEFAULT_BPM_RANGE[0], filters.maxBpm ?? DEFAULT_BPM_RANGE[1]]}
-                defaultPriceRange={DEFAULT_PRICE_RANGE}
-                currentPriceRange={[filters.minPrice ?? DEFAULT_PRICE_RANGE[0], filters.maxPrice ?? DEFAULT_PRICE_RANGE[1]]}
-                isSheetContext={true}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
-      </div>
-
+      {/* Main Content Area */}
       <div className={cn(
           "flex-1 min-w-0",
       )}>
@@ -489,26 +170,61 @@ export const ExploreClientUI: React.FC<ExploreClientUIProps> = ({ serverSearchPa
             )}
           </div>
           
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <ActiveFilters 
+          {/* Mobile Filter Button & Active Filters */}
+          <div className="flex flex-wrap items-center gap-3">
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline" className="lg:hidden flex items-center gap-2 bg-neutral-800 border-neutral-700 hover:bg-neutral-700">
+                  <ListFilter className="w-4 h-4" />
+                  Filters
+                  {activeFilterItems.length > 0 && (
+                    <span className="ml-1 bg-cyan-glow text-black text-xs px-1.5 py-0.5 rounded-full font-medium">
+                      {activeFilterItems.length}
+                    </span>
+                  )}
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-80 p-0">
+                <SheetHeader className="p-6 border-b border-neutral-700">
+                  <SheetTitle>Filters</SheetTitle>
+                </SheetHeader>
+                <div className="p-6">
+                  <FilterSidebar onFiltersApplied={handleSidebarFiltersApplied} />
+                </div>
+              </SheetContent>
+            </Sheet>
+
+            {/* Active Filters */}
+            {activeFilterItems.length > 0 && (
+              <ActiveFilters 
                 filters={activeFilterItems} 
                 onRemoveFilter={handleRemoveFilter} 
                 onClearAll={handleClearAllFilters}
-            />
-            <div className="flex items-center gap-2 self-end sm:self-center">
+              />
+            )}
+          </div>
+
+          {/* Controls Row: Sort & Layout */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-neutral-400">
+                {currentTotalCount} track{currentTotalCount !== 1 ? 's' : ''}
+              </span>
+              
+              {/* Sort Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="h-9">
+                  <Button variant="outline" className="gap-2 bg-neutral-800 border-neutral-700 hover:bg-neutral-700">
                     Sort: {sortOptions.find(opt => opt.value === sortOrder)?.label || 'Relevance'}
-                    <ChevronDown className="ml-2 h-4 w-4" />
+                    <ChevronDown className="w-4 h-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[200px]">
+                <DropdownMenuContent align="start" className="bg-neutral-800 border-neutral-700">
                   <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
+                  <DropdownMenuSeparator className="bg-neutral-700" />
                   <DropdownMenuRadioGroup value={sortOrder} onValueChange={(value) => handleSortChange(value as SortOrder)}>
-                    {sortOptions.map(option => (
-                      <DropdownMenuRadioItem key={option.value} value={option.value}>
+                    {sortOptions.map((option) => (
+                      <DropdownMenuRadioItem key={option.value} value={option.value} className="hover:bg-neutral-700">
                         {option.label}
                       </DropdownMenuRadioItem>
                     ))}
@@ -516,49 +232,122 @@ export const ExploreClientUI: React.FC<ExploreClientUIProps> = ({ serverSearchPa
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+
+            {/* Layout Toggle */}
+            <div className="flex items-center gap-1 bg-neutral-800 rounded-lg p-1">
+              <Button
+                variant={layoutMode === 'grid' ? 'default' : 'ghost'}
+                size="icon"
+                onClick={() => handleLayoutChange('grid')}
+                className={cn(
+                  "w-8 h-8",
+                  layoutMode === 'grid' 
+                    ? "bg-cyan-glow text-black hover:bg-cyan-glow/90" 
+                    : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700"
+                )}
+                aria-label="Grid view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={layoutMode === 'list' ? 'default' : 'ghost'}
+                size="icon"
+                onClick={() => handleLayoutChange('list')}
+                className={cn(
+                  "w-8 h-8",
+                  layoutMode === 'list' 
+                    ? "bg-cyan-glow text-black hover:bg-cyan-glow/90" 
+                    : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700"
+                )}
+                aria-label="List view"
+              >
+                <List className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
-        {renderContent()}
+        {/* Content */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={`${sortOrder}-${currentPage}-${JSON.stringify(activeFilterItems)}`}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.2 }}
+            className="mb-8"
+          >
+            {renderContent()}
+          </motion.div>
+        </AnimatePresence>
 
+        {/* Pagination */}
         {totalPages > 1 && (
-          <Pagination className="mt-8">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  href="#"
-                  onClick={(e) => { e.preventDefault(); handlePageChange(currentPage - 1); }}
-                  disabled={currentPage === 1 || isLoading}
-                  aria-disabled={currentPage === 1 || isLoading}
-                />
-              </PaginationItem>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                <PaginationItem key={page}>
-                  <PaginationLink
+          <div className="flex justify-center mt-8">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious 
                     href="#"
-                    onClick={(e) => { e.preventDefault(); handlePageChange(page); }}
-                    isActive={currentPage === page}
-                    aria-current={currentPage === page ? "page" : undefined}
-                    disabled={isLoading}
-                    aria-disabled={isLoading}
-                  >
-                    {page}
-                  </PaginationLink>
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handlePageChangeWithValidation(currentPage - 1);
+                    }}
+                    className={cn(
+                      currentPage <= 1 && "pointer-events-none opacity-50",
+                      "bg-neutral-800 border-neutral-700 hover:bg-neutral-700"
+                    )}
+                  />
                 </PaginationItem>
-              ))}
-              <PaginationItem>
-                <PaginationNext
-                  href="#"
-                  onClick={(e) => { e.preventDefault(); handlePageChange(currentPage + 1); }}
-                  disabled={currentPage === totalPages || isLoading}
-                  aria-disabled={currentPage === totalPages || isLoading}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+                
+                {/* Page Numbers */}
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  const pageNum = i + 1;
+                  const shouldShow = 
+                    pageNum === 1 || 
+                    pageNum === totalPages || 
+                    (pageNum >= currentPage - 1 && pageNum <= currentPage + 1);
+                  
+                  if (!shouldShow) return null;
+                  
+                  return (
+                    <PaginationItem key={pageNum}>
+                      <PaginationLink
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handlePageChangeWithValidation(pageNum);
+                        }}
+                        isActive={pageNum === currentPage}
+                        className={cn(
+                          "bg-neutral-800 border-neutral-700 hover:bg-neutral-700",
+                          pageNum === currentPage && "bg-cyan-glow text-black hover:bg-cyan-glow/90"
+                        )}
+                      >
+                        {pageNum}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+
+                <PaginationItem>
+                  <PaginationNext 
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handlePageChangeWithValidation(currentPage + 1);
+                    }}
+                    className={cn(
+                      currentPage >= totalPages && "pointer-events-none opacity-50",
+                      "bg-neutral-800 border-neutral-700 hover:bg-neutral-700"
+                    )}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
         )}
       </div>
-      <SlideOutPanel />
     </div>
   );
 }; 

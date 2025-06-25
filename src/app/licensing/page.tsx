@@ -136,11 +136,45 @@ export default function LicensingPage() {
               {[ 'Files', 'Streaming Limit', 'Sales Limit', 'Performances', 'Video Rights', 'Exclusivity', 'Credit Required', 'Price (Approx)'].map((feature) => (
                 <TableRow key={feature} className="hover:bg-gray-700/20">
                   <TableCell className="px-4 py-3 font-medium text-white whitespace-nowrap">{feature}</TableCell>
-                  {licenseTypes.map(lt => (
-                    <TableCell key={lt.name} className="px-4 py-3 text-gray-300 whitespace-nowrap">
-                      {lt[feature.toLowerCase().replace(/ /g, '').replace('(approx)', '') as string] ?? '-'}
-                    </TableCell>
-                  ))}
+                  {licenseTypes.map(lt => {
+                    const key = feature.toLowerCase().replace(/ /g, '').replace('(approx)', '');
+                    let value = '-';
+                    
+                    switch (key) {
+                      case 'files':
+                        value = lt.files;
+                        break;
+                      case 'streaminglimit':
+                        value = lt.streaming;
+                        break;
+                      case 'saleslimit':
+                        value = lt.sales;
+                        break;
+                      case 'performances':
+                        value = lt.performances;
+                        break;
+                      case 'videorights':
+                        value = lt.video;
+                        break;
+                      case 'exclusivity':
+                        value = lt.exclusivity;
+                        break;
+                      case 'creditrequired':
+                        value = lt.credit;
+                        break;
+                      case 'price':
+                        value = lt.price;
+                        break;
+                      default:
+                        value = '-';
+                    }
+                    
+                    return (
+                      <TableCell key={lt.name} className="px-4 py-3 text-gray-300 whitespace-nowrap">
+                        {value}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               ))}
             </TableBody>

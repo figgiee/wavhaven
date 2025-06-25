@@ -2,7 +2,7 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
-import prisma from '@/lib/prisma'; // Assuming prisma client setup
+import prisma from '@/lib/db/prisma'; // Assuming prisma client setup
 import { getInternalUserId } from '@/lib/userUtils'; // Assuming user util setup
 import { createClient } from '@supabase/supabase-js';
 import { ContentType, TrackFileType } from '@prisma/client'; // Import ContentType and TrackFileType enums

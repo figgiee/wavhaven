@@ -2,10 +2,10 @@
 
 import { z } from 'zod';
 import { auth, currentUser } from '@clerk/nextjs/server';
-import prisma from '@/lib/prisma';
-import { stripe } from '@/lib/stripe'; // Assuming stripe client is initialized here
+import prisma from '@/lib/db/prisma';
+import { stripe } from '@/lib/payments/stripe'; // Assuming stripe client is initialized here
 import { getInternalUserId } from '@/lib/userUtils';
-import { ensureUserRecord } from '@/server-actions/userActions'; // Import ensureUserRecord
+import { ensureUserRecord } from '@/server-actions/users/userMutations'; // Import ensureUserRecord
 import { CartItem } from '@/stores/cartStore'; // Use for input structure reference
 import { posthogServerClient } from '@/lib/posthog-server'; // Import server client
 import { Ratelimit } from '@upstash/ratelimit'; // Import Ratelimit

@@ -7,7 +7,7 @@ import { X, Menu } from 'lucide-react'; // Icons for menu toggle
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
-import { AnimatedLogo } from './site-header'; // Assuming AnimatedLogo is in site-header
+import { Logo } from '@/components/ui/Logo';
 
 // Example navigation items - replace with your actual nav structure
 const mobileNavItems = [
@@ -49,7 +49,12 @@ export function MobileNav({ isOpen, setIsOpen }: MobileNavProps) {
         <SheetHeader className="p-6 border-b border-neutral-800">
           <SheetTitle>
             <Link href="/" onClick={() => setIsOpen(false)} className="focus:outline-none focus:ring-2 focus:ring-cyan-glow/50 rounded-sm">
-              <AnimatedLogo />
+              <Logo 
+                width={72} 
+                height={40} 
+                showText={false}
+                hoverEffect="subtle-glow"
+              />
             </Link>
           </SheetTitle>
           <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="absolute top-4 right-4 text-neutral-400 hover:text-cyan-glow">

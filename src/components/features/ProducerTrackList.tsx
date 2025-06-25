@@ -20,7 +20,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { deleteTrack, deleteMultipleTracks } from '@/server-actions/trackActions';
+import { deleteTrack, deleteMultipleTracks } from '@/server-actions/tracks/trackMutations';
 import { toast } from 'sonner';
 import { Checkbox } from "@/components/ui/checkbox";
 import { ExternalLink } from 'lucide-react';

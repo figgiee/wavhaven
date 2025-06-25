@@ -1,3 +1,6 @@
+import { prisma } from '@/lib/db/prisma';
+import { UserProfileHeaderData } from '@/types';
+
 export async function getUserProfileByUsername(username: string): Promise<UserProfileHeaderData | null> {
   if (!username) return null;
 
@@ -20,7 +23,7 @@ export async function getUserProfileByUsername(username: string): Promise<UserPr
             twitterUrl: true,
             instagramUrl: true,
             youtubeUrl: true,
-            soundcloudUrl: true,
+            soundCloudUrl: true,
             tiktokUrl: true,
           },
         },
@@ -46,7 +49,7 @@ export async function getUserProfileByUsername(username: string): Promise<UserPr
         twitterUrl: user.sellerProfile.twitterUrl,
         instagramUrl: user.sellerProfile.instagramUrl,
         youtubeUrl: user.sellerProfile.youtubeUrl,
-        soundcloudUrl: user.sellerProfile.soundcloudUrl,
+        soundCloudUrl: user.sellerProfile.soundCloudUrl,
         tiktokUrl: user.sellerProfile.tiktokUrl,
       } : null,
     };

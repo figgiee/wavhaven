@@ -104,14 +104,14 @@ export function ActiveFilters({
         <span className="text-xs font-medium text-neutral-400 mr-1">Active:</span>
         {activeFilterItems.map((item, index) => (
           <Badge
-            key={`${item.type}-${index}-${typeof item.value === 'string' ? item.value : item.value.join('-')}`}
+            key={`${item.type}-${index}-${typeof item.value === 'string' ? item.value : Array.isArray(item.value) ? item.value.join('-') : item.value}`}
             variant="secondary"
             className="flex items-center gap-1.5 pl-2 pr-0.5 py-0.5 text-xs font-normal bg-cyan-glow/15 text-cyan-glow hover:bg-cyan-glow/25 border border-cyan-glow/30 shadow-sm transition-colors cursor-default"
           >
             {item.label}
             <Button
               variant="ghost"
-              size="iconSm"
+              size="icon-sm"
               onClick={() => handleRemove(item.type, item.value)}
               className="h-4 w-4 p-0 rounded-full text-cyan-glow/70 hover:text-cyan-glow hover:bg-cyan-glow/20 transition-all"
               aria-label={`Remove filter: ${item.label}`}

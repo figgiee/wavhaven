@@ -1,4 +1,4 @@
-import { getFeaturedTracks } from '@/server-actions/trackActions';
+import { getFeaturedTracks } from '@/server-actions/tracks/trackQueries';
 import type { TrackSearchResult } from '@/types';
 // We will need to export FeaturedBeatsSectionClient from app/page.tsx or move it here.
 // For now, assuming it will be exported from app/page.tsx or moved.

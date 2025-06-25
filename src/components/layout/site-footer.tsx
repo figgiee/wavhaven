@@ -2,12 +2,11 @@
 
 import Link from 'next/link';
 import { Twitter, Instagram, Facebook, Send } from 'lucide-react'; // Using Send for SoundCloud as placeholder
-import { AnimatedLogo } from './site-header'; // Re-use the logo
+import { Logo } from '@/components/ui/Logo'; // Use the new Logo component
 
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-// import { AnimatedLogo } from '@/components/layout/site-header'; // Removing logo from footer
 
 // Define types for footer links if needed
 interface FooterLink {
@@ -81,7 +80,11 @@ export function SiteFooter({ className }: { className?: string }) {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8"> {/* Outer grid for logo vs links area */}
           {/* Column 1: Logo & Copyright */}
           <div className="lg:col-span-1 space-y-4">
-            <AnimatedLogo />
+                            <Logo 
+                    width={48} 
+                    height={28} 
+                    hoverEffect="brightness"
+                />
             <p className="text-sm text-neutral-400">
               &copy; {currentYear} WAVHAVEN.
               <br />

@@ -5,7 +5,7 @@ import { SlideOutPanel } from './SlideOutPanel';
 import { useUIStore } from '@/stores/use-ui-store';
 import { usePlayerStore } from '@/stores/use-player-store';
 import { useCartStore } from '@/stores/use-cart-store';
-import { getBeatDetails, getSimilarTracks } from '@/server-actions/trackActions';
+import { getBeatDetails, getSimilarTracks } from '@/server-actions/tracks/trackQueries';
 import { mockBeatDetailsSuccess, mockSimilarTracks } from '../../../tests/mocks/mockTrackData';
 import { Prisma } from '@prisma/client'; // Import Decimal if needed for mock
 

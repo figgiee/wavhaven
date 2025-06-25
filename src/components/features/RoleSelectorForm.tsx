@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner'; // Using sonner for notifications
-import { setUserRole } from '@/server-actions/userActions';
+import { setUserRole } from '@/server-actions/users/userMutations';
 import { UserRole } from '@prisma/client';
 
 // Define the schema for the form using Zod

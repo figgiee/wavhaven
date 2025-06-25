@@ -1,6 +1,6 @@
 'use client';
 
-import type { License } from './license.types';
+import type { License } from '@/types';
 
 interface UsageTermsProps {
     license: License;

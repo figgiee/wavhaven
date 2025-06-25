@@ -388,7 +388,7 @@ export function PersistentPlayer() {
                     {/* --- Left Section: Track Info --- */}
                     <div className="flex items-center gap-3 w-1/3 md:w-1/4 overflow-hidden">
                         <Image 
-                            src={currentTrack.coverImage || 'https://via.placeholder.com/100x100/1f2937/818cf8?text=W'}
+                            src={currentTrack.coverImage || '/logo.svg'}
                             alt={`${currentTrack.title} cover`}
                             width={48} // Smaller size for player
                             height={48}

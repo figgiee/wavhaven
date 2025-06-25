@@ -5,7 +5,7 @@ console.log("[commentActions] CLERK_SECRET_KEY available:", !!process.env.CLERK_
 
 import { z } from 'zod';
 import { auth, currentUser } from '@clerk/nextjs/server';
-import prisma from '@/lib/prisma';
+import prisma from '@/lib/db/prisma';
 import { getInternalUserId } from '@/lib/userUtils'; // Ensure this path is correct
 import { revalidatePath } from 'next/cache';
 // Explicitly import types from the generated client location

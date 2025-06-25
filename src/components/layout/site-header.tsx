@@ -49,7 +49,8 @@ import { ThemeToggleDropdown } from '@/components/theme/theme-toggle-dropdown';
 import { GlobalSearchInput } from '@/components/features/search/global-search-input';
 import { MainNav } from "./main-nav";
 import { MobileNav } from "./mobile-nav";
-import { sharedClerkAppearance } from "@/lib/clerk-appearance";
+import { sharedClerkAppearance } from "@/lib/auth/clerk-appearance";
+import { Logo } from '@/components/ui/Logo';
 
 // Reusable NavLink component for main navigation
 function NavLink({ href, children, className }: { href: string; children: React.ReactNode, className?: string }) {
@@ -74,30 +75,7 @@ function NavLink({ href, children, className }: { href: string; children: React.
     );
 }
 
-// Reusable component for the animated logo
-export function AnimatedLogo() {
-    return (
-        <Link 
-            href="/" 
-            className={cn(
-                "flex items-center gap-2.5 group mr-4 space-x-2 rounded-sm",
-                "focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-glow/50"
-            )}
-            aria-label="Wavhaven Home"
-        >
-            <div className="relative w-7 h-7 flex items-center justify-center">
-                <div className="sound-wave-container absolute inset-0 flex items-center justify-between px-0.5">
-                    <div className="sound-bar w-[3px] h-[50%] bg-gradient-to-b from-cyan-glow to-magenta-spark rounded-full opacity-90 group-hover:animate-pulse animation-delay-0"/>
-                    <div className="sound-bar w-[3px] h-[80%] bg-gradient-to-b from-cyan-glow to-magenta-spark rounded-full opacity-90 group-hover:animate-pulse animation-delay-150"/>
-                    <div className="sound-bar w-[3px] h-[100%] bg-gradient-to-b from-cyan-glow to-magenta-spark rounded-full opacity-90 group-hover:animate-pulse animation-delay-300"/>
-                    <div className="sound-bar w-[3px] h-[80%] bg-gradient-to-b from-cyan-glow to-magenta-spark rounded-full opacity-90 group-hover:animate-pulse animation-delay-450"/>
-                    <div className="sound-bar w-[3px] h-[50%] bg-gradient-to-b from-cyan-glow to-magenta-spark rounded-full opacity-90 group-hover:animate-pulse animation-delay-600"/>
-                </div>
-            </div>
-            <span className="text-xl font-semibold tracking-wider text-neutral-100 group-hover:text-cyan-glow transition-colors">WAVHAVEN</span>
-        </Link>
-    );
-}
+
 
 export function SiteHeader() {
     const { isSignedIn } = useUser();
@@ -125,9 +103,12 @@ export function SiteHeader() {
             <header className={headerClasses}>
                 <div className="max-w-screen-xl mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center">
-                        {/* <Link href="/" className="mr-4 flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-cyan-glow/50 rounded-sm" aria-label="Wavhaven Home"> */}
-                            <AnimatedLogo />
-                        {/* </Link> */}
+                        <Logo 
+                            width={72} 
+                            height={40} 
+                            showText={false}
+                            hoverEffect="subtle-glow"
+                        />
                         {/* Desktop Navigation - hidden on small screens */}
                         <nav className="hidden md:flex items-center gap-5 text-sm font-medium text-neutral-300">
                             <NavLink href="/explore">Explore</NavLink>

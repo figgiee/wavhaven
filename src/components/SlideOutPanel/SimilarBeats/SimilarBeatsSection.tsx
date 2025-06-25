@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { SlideOutBeatCardAdapter } from './SlideOutBeatCardAdapter';
-import { getSimilarTracks, SimilarTrackCardData } from '@/server-actions/trackActions';
+import { SlideOutTrackCardAdapter } from './SlideOutTrackCardAdapter';
+import { getSimilarTracks, SimilarTrackCardData } from '@/server-actions/tracks/trackQueries';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Button } from '@/components/ui/button';
@@ -69,7 +69,7 @@ export const SimilarBeatsSection: React.FC<SimilarBeatsSectionProps> = ({ beatId
         {!isLoading && !error && similarBeats.length > 0 && (
           <div className="grid grid-cols-2 gap-4">
             {similarBeats.map(beat => (
-              <SlideOutBeatCardAdapter key={beat.id} beat={beat} />
+              <SlideOutTrackCardAdapter key={beat.id} beat={beat} />
             ))}
           </div>
         )}

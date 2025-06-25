@@ -95,7 +95,7 @@ export async function createSignedUrl(
 ): Promise<string> {
   const supabaseService = getServiceSupabaseClient();
   const options: { download?: string | boolean } = {};
-  if (downloadFilename) {
+  if (typeof downloadFilename === 'string') {
     options.download = downloadFilename;
   } else if (downloadFilename === true) {
     options.download = true;

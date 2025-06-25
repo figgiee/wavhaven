@@ -4,64 +4,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useUIStore } from '@/stores/use-ui-store'; // Import the UI store
 import { SlideOutHeader } from './SlideOutHeader';
 import { SlideOutBody } from './SlideOutBody';
-import { BeatOverviewSection } from './BeatOverview/BeatOverviewSection';
-import { PricingSection } from './Pricing/PricingSection';
-import { SimilarBeatsSection } from './SimilarBeats/SimilarBeatsSection';
-import { CommentsSection } from './Comments/CommentsSection'; // <--- Import CommentsSection
+import { SlideOutPanelContent } from './SlideOutPanelContent';
 import type { AdaptedBeatData, FullTrackDetails } from '@/types';
-import { getBeatDetails } from '@/server-actions/trackActions';
-import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
-import { AlertMessage } from "./AlertMessage"; // Import AlertMessage
-import { cn } from "@/lib/utils"; // Import cn for conditional classes
-import { FullTrackDetails as TrackDetailsType } from '@/types/Track'; // Make sure this type aligns with server action return
+import { cn } from "@/lib/utils";
 import { Prisma } from '@prisma/client';
 
-// TODO: Replace with actual server action/API call
-import { getSimilarBeats } from '@/lib/api/beats'; // Assuming API functions exist
-
-// Simple Skeleton for the panel content
-const PanelSkeleton = () => (
-    <div className="space-y-6 p-6">
-        {/* Overview Skeleton */}
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-            <Skeleton className="h-36 w-36 sm:h-48 sm:w-48 rounded-md flex-shrink-0" />
-            <div className="space-y-3 flex-grow w-full">
-                <Skeleton className="h-4 w-1/3" />
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-4 w-1/2" />
-                <div className="flex space-x-3 pt-2">
-                    <Skeleton className="h-8 w-16" />
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <Skeleton className="h-8 w-12" />
-                </div>
-            </div>
-        </div>
-        <Skeleton className="h-1 w-full bg-gray-700" /> {/* Separator */}
-        <div className="space-y-3">
-             <Skeleton className="h-4 w-1/4" />
-             <Skeleton className="h-4 w-1/2" />
-             <Skeleton className="h-4 w-3/4" />
-        </div>
-
-        {/* Pricing Skeleton */}
-        <div className="space-y-3 pt-4">
-             <Skeleton className="h-6 w-1/3 mb-3" />
-             <Skeleton className="h-12 w-full rounded" />
-             <Skeleton className="h-12 w-full rounded" />
-        </div>
-
-        {/* Similar Beats Skeleton */}
-        <div className="space-y-3 pt-4">
-             <Skeleton className="h-6 w-1/3 mb-3" />
-             <div className="grid grid-cols-2 gap-4">
-                 <Skeleton className="h-40 w-full rounded" />
-                 <Skeleton className="h-40 w-full rounded" />
-            </div>
-        </div>
-    </div>
-);
+// Import the server action for data fetching
+import { getBeatDetails } from '@/server-actions/tracks/trackQueries';
 
 interface SlideOutPanelProps {
     width?: string; // e.g., 'w-full sm:max-w-md md:max-w-lg'
@@ -119,8 +68,8 @@ const adaptBeatData = (details: FullTrackDetails): AdaptedBeatData => {
         // Extract genre/moods/tags safely
         genre: /* details.genres?.[0]?.name ?? */ 'Unknown', // Adjust based on how Genre/Mood/Tag are structured
          tempo: details.bpm ?? 0,
-         moods: /* details.moods?.map(m => m.name) ?? */ details.tags ?? [], // Adapt based on data structure
-         tags: details.tags ?? [], // Use tags directly if it's a string array
+         moods: details.moods?.map(mood => mood.name) ?? [], // Map moods to their names
+         tags: details.tags?.map(tag => tag.name) ?? [], // Map tags to their names
         // isForSale might depend on whether licenses exist and have prices > 0
         isForSale: !!details.licenses?.some(l => parsePrice(l.price) > 0),
         licenses: (details.licenses ?? []).map((lic) => ({
@@ -274,28 +223,16 @@ export const SlideOutPanel: React.FC<SlideOutPanelProps> = ({ width = 'w-full sm
         }
     };
 
-    // Determine body content based on state
-    let bodyContent: React.ReactNode;
-    if (isLoading) {
-        bodyContent = <PanelSkeleton />;
-    } else if (error) {
-        bodyContent = <AlertMessage variant="error" title="Error Loading Beat" message={error} className="m-6" />;
-    } else if (currentBeatData) {
-        bodyContent = (
-            <>
-                <BeatOverviewSection beat={currentBeatData} />
-                <PricingSection beat={currentBeatData} />
-                <CommentsSection beatId={currentBeatData.id.toString()} />
-                <SimilarBeatsSection currentBeatId={currentBeatData.id.toString()} />
-            </>
-        );
-    } else if (isSlideOutOpen && !currentSlideOutBeatId) {
-        // Handle the case where the panel is open but no ID is set (should ideally not happen with BeatCard trigger)
-        bodyContent = <AlertMessage variant="info" title="No Beat Selected" message="Please select a beat to view details." className="m-6" />;
-    } else {
-        // Default state when closed or initializing (should not be visible)
-        bodyContent = null;
-    }
+    // Content component handles all conditional rendering logic
+    const bodyContent = (
+        <SlideOutPanelContent
+            isLoading={isLoading}
+            error={error}
+            currentBeatData={currentBeatData}
+            isSlideOutOpen={isSlideOutOpen}
+            currentSlideOutBeatId={currentSlideOutBeatId}
+        />
+    );
 
     // Use Portal if needed for stacking context, otherwise render inline
     return (

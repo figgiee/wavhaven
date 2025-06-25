@@ -1,8 +1,8 @@
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { stripe } from '@/lib/stripe'; // Your initialized Stripe client
-import { prisma } from '@/lib/prisma';
+import { stripe } from '@/lib/payments/stripe'; // Your initialized Stripe client
+import { prisma } from '@/lib/db/prisma';
 import { sendOrderConfirmationEmail } from '@/lib/email';
 import { createSignedUrl } from '@/lib/storage';
 import { TrackFileType, OrderStatus } from '@prisma/client'; // Import enum if needed for filtering
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
       const [user, licensesFromDb] = await Promise.all([
         prisma.user.findUnique({
           where: { id: internalUserId },
-          select: { id: true, email: true, isGuest: true },
+          select: { id: true, email: true, role: true },
         }),
         prisma.license.findMany({
           where: { id: { in: licenseIds } }, // Fetch licenses matching the IDs from metadata
@@ -103,10 +103,10 @@ export async function POST(req: Request) {
       // -----------------------------------------
 
       const orderData = {
-        userId: user.id,
+        customerId: user.id,
+        totalAmount: amountTotal ?? 0, // Use amount from session
         stripeCheckoutSessionId: session.id, // Use the session ID as the reference
-        amountTotal: amountTotal ?? 0, // Use amount from session
-        status: OrderStatus.PROCESSING, // Use Enum: Start as PROCESSING
+        status: OrderStatus.PENDING, // Use Enum: Start as PENDING
       };
 
       // Use transaction for atomicity
@@ -120,9 +120,8 @@ export async function POST(req: Request) {
         const orderItemsData = validLicenses.map(license => ({
             orderId: newOrder.id,
             licenseId: license.id,
-            priceAtPurchase: license.price, 
+            price: license.price, 
             trackId: license.trackId, 
-            producerId: license.track.producerId,
         }));
 
         await tx.orderItem.createMany({ data: orderItemsData });
@@ -140,12 +139,12 @@ export async function POST(req: Request) {
           // Update status to indicate fulfillment is starting
           await prisma.order.update({
              where: { id: order.id },
-             data: { status: OrderStatus.FULFILLMENT_PENDING }
+             data: { status: OrderStatus.PENDING }
           });
           console.log(`Order ${order.id} status updated to FULFILLMENT_PENDING.`);
 
           // --- Fulfillment Logic (Guest Email & Download Links) ---
-          if (user.isGuest) {
+          if (user.role === 'GUEST') {
             console.log(`User ${user.id} is a guest. Preparing email fulfillment for order ${order.id}.`);
             const userEmailForGuest = user.email ?? customerEmailFromStripe;
             if (!userEmailForGuest) {
@@ -187,14 +186,14 @@ export async function POST(req: Request) {
                     totalPrice: amountTotal ?? 0,
                     items: order.licenses.map(l => ({ 
                         trackTitle: l.track.title,
-                        licenseType: l.type,
-                        price: l.price, 
+                        licenseType: l.type.toString(),
+                        price: Number(l.price), 
                         // Pass download links specific to this track/license if needed
                         // downloadLinks: downloadLinksMap.get(l.trackId) || [] 
                     }))
                 };
-                // Flatten all links for a simple list in the email for now
-                const allDownloadLinks = Array.from(downloadLinksMap.values()).flat();
+                // Flatten all links for a simple list in the email for now - extract just URLs
+                const allDownloadLinks = Array.from(downloadLinksMap.values()).flat().map(link => link.url);
 
                 console.log(`Sending order confirmation email to guest: ${userEmailForGuest} for order ${order.id}`);
                 const emailResult = await sendOrderConfirmationEmail(userEmailForGuest, emailOrderDetails, allDownloadLinks);
@@ -231,29 +230,9 @@ export async function POST(req: Request) {
           // Log error, but don't fail the webhook response itself, as DB transaction succeeded.
       }
 
-      // --- PostHog Event Tracking (moved after fulfillment attempt) --- 
-      if (posthogServerClient && internalUserId) {
-        posthogServerClient.capture({
-          distinctId: internalUserId,
-          event: 'order_completed', // Event name remains the same
-          properties: {
-            orderId: order.id,
-            orderStatus: fulfillmentSuccessful ? OrderStatus.COMPLETED : OrderStatus.FULFILLMENT_PENDING, // Track final status
-            totalAmount: amountTotal ?? 0,
-            currency: session.currency?.toUpperCase() || 'USD',
-            itemCount: order.licenses.length, // Use count from processed licenses
-            userType: user.isGuest ? 'guest' : 'registered',
-            licenseIds: order.licenses.map(l => l.id), // Use IDs from processed licenses
-            // Optionally include license types, track IDs etc.
-            // licenseTypes: order.licenses.map(l => l.type),
-            $set: { // You can set user properties on purchase if desired
-                total_paid: (await prisma.order.aggregate({ _sum: { amountTotal: true }, where: { userId: user.id, status: { in: [OrderStatus.COMPLETED, OrderStatus.FULFILLMENT_PENDING, OrderStatus.PROCESSING]}}}))._sum.amountTotal ?? 0,
-                last_purchase_date: order.createdAt,
-            }
-          }
-        });
-        // await posthogServerClient.flushAsync();
-      }
+      // --- PostHog Event Tracking (disabled) --- 
+      // PostHog server-side tracking is currently disabled in posthog-server.ts
+      console.log(`Order completed tracking: ${order.id} - Status: ${fulfillmentSuccessful ? 'COMPLETED' : 'PENDING'}`);
       // ----------------------------- 
 
     } catch (error) {
@@ -266,17 +245,9 @@ export async function POST(req: Request) {
        // but before fulfillment starts (which is now handled by the fulfillment try/catch).
        // This specific FAILED update might be less necessary now.
 
-      // --- PostHog Event Tracking for Failure --- 
-      if (posthogServerClient && internalUserId) {
-        posthogServerClient.capture({
-          distinctId: internalUserId,
-          event: 'order_processing_failed',
-          properties: { 
-              stripe_session_id: session?.id,
-              error_message: error instanceof Error ? error.message : 'Unknown processing error',
-          }
-        });
-      }
+      // --- PostHog Event Tracking for Failure (disabled) --- 
+      // PostHog server-side tracking is currently disabled in posthog-server.ts
+      console.log(`Order processing failed tracking: Session ${session?.id}`);
       // -----------------------------------------
       return NextResponse.json({ error: 'Failed to process order.' }, { status: 500 });
     }

@@ -80,7 +80,7 @@ vi.doMock('next/navigation', async () => {
 });
 
 // --- NOW, import the modules under test and dependencies used directly in tests ---
-import { getTrackBySlug, searchTracks } from './trackActions';
+import { getTrackBySlug, searchTracks } from './tracks/trackQueries';
 import { auth } from '@clerk/nextjs/server'; // Import the mocked auth function
 import { posthogServerClient } from '@/lib/posthog-server'; // Import mocked posthog client
 import { getInternalUserId } from '@/lib/userUtils'; // Import mocked util

@@ -1,2 +1,2 @@
 export * from './SimilarBeatsSection';
-export * from './SlideOutBeatCardAdapter'; // Export adapter if needed elsewhere, or keep internal 
+export * from './SlideOutTrackCardAdapter'; // Export TrackCard adapter if needed elsewhere, or keep internal 

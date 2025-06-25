@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { currentUser } from '@clerk/nextjs/server';
 import { UserButton, SignInButton, SignUpButton } from '@clerk/nextjs';
+import { Logo } from '@/components/ui/Logo';
 
 export default async function Header() {
   const user = await currentUser(); // Clerk user object
@@ -10,9 +11,7 @@ export default async function Header() {
     <header className="border-b sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <nav className="container flex items-center justify-between p-4 mx-auto h-16">
         {/* Left Side: Logo/Brand */} 
-        <Link href="/" className="font-bold text-lg">
-          Wavhaven
-        </Link>
+        <Logo width={24} height={14} />
 
         {/* Center: Navigation Links - Show extra links if user is logged in */} 
         <div className="hidden md:flex gap-6 items-center">

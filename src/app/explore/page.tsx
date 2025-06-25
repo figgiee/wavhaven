@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation'; // Import useSearchParams
 import { Search, LayoutGrid, List, ChevronDown, Loader2, AlertCircle, ListFilter } from 'lucide-react';
-import { BeatCard } from '@/components/beat-card'; // Adjust path if needed
+import { TrackCard } from '@/components/track-card';
 import { FilterSidebar } from '@/components/explore/filter-sidebar'; // Import the new component
 import { ActiveFilters } from '@/components/explore/active-filters'; // <-- Import ActiveFilters
 import { Button } from '@/components/ui/button'; // For sort/layout buttons
 import { Input } from '@/components/ui/input'; // For search input
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"; // <-- Import Sheet components
-import { searchTracks } from '@/server-actions/trackActions'; // Import server action
+import { searchTracks } from '@/server-actions/tracks/trackQueries'; // Import server action
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -29,7 +29,12 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { cn } from '@/lib/utils';
-import type { License } from '@/components/license/license.types'; // Import License type
+import type { License } from '@/types'; // Import License type
+import { Skeleton } from '@/components/ui/skeleton';
+import { TrackCardSkeleton } from '@/components/track-card-skeleton';
+import { useUIStore } from '@/stores/use-ui-store';
+import { SlideOutPanel } from '@/components/SlideOutPanel/SlideOutPanel';
+import { ScrollArea } from '@/components/ui/scroll-area';
 // import { Beat } from '@/types/beat'; // Assuming type definition exists - Defining locally for now
 
 // Get the Supabase URL from environment variables
@@ -37,8 +42,9 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 // --- Updated Beat Type Definition (includes licenses) ---
 interface Beat {
-  id: string | number;
+  id: string;
   title: string;
+  slug: string; // Added missing slug field
   imageUrl?: string;
   coverImageUrl?: string;
   producerName: string;
@@ -56,10 +62,12 @@ interface Beat {
 // Define FilterValues type (mirroring the one in FilterSidebar)
 // TODO: Share this type definition properly
 interface FilterValues {
+  keyword?: string;
   genres?: string[];
-  bpmRange?: { min: number; max: number }; // Example structure, adjust as needed
-  key?: string; // Example structure, adjust as needed
+  bpm?: [number, number];
+  keys?: string[];
   tags?: string[];
+  price?: [number, number];
 }
 
 type LayoutMode = 'grid' | 'list';
@@ -83,12 +91,14 @@ export default function ExplorePage() {
       genres: [],
       bpm: [60, 180], // Use the same default as FilterSidebar
       keys: [],
-      tags: []
+      tags: [],
+      price: [0, 200] // Add default price range
   });
   const [searchTerm, setSearchTerm] = useState(initialQuery);
   const [contentType, setContentType] = useState(initialType); // <-- State for type
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('grid');
   const [sortOrder, setSortOrder] = useState<SortOrder>('relevance');
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   // --- Pagination State ---
   const [currentPage, setCurrentPage] = useState(1);
@@ -130,20 +140,21 @@ export default function ExplorePage() {
 
       try {
         // Use searchTracks server action, passing the current state
-        const tracksResult = await searchTracks({
+        const searchResult = await searchTracks({
           query: searchParams.get('q') || '', // Use current search term
-          type: searchParams.get('type') || '', // <-- Pass contentType
+          type: searchParams.get('type') || undefined, // <-- Pass contentType (undefined if empty)
           // TODO: Pass filters, sortOrder, pagination info here
         });
 
         if (!isMounted) return;
 
-        console.log('Tracks Result (should include licenses):', tracksResult);
+        console.log('Search Result:', searchResult);
 
         // Map the tracks to match our Beat interface, including licenses
-        const beats: Beat[] = tracksResult.map(track => ({
+        const beats: Beat[] = searchResult.tracks.map(track => ({
           id: track.id,
           title: track.title,
+          slug: track.slug,
           imageUrl: getStorageUrl(track.coverImageUrl),
           coverImageUrl: getStorageUrl(track.coverImageUrl),
           producerName: track.producer?.username || 'Unknown Producer',
@@ -152,12 +163,18 @@ export default function ExplorePage() {
           key: track.key || undefined,
           audioSrc: getStorageUrl(track.previewAudioUrl),
           previewAudioUrl: getStorageUrl(track.previewAudioUrl),
-          beatUrl: `/track/${track.id}`,
-          licenses: track.licenses || [], // <-- Map licenses array
+          beatUrl: `/track/${track.slug}`,
+          licenses: track.licenses?.map(license => ({
+            id: license.id,
+            name: license.name,
+            price: license.price,
+            includedFiles: license.filesIncluded || [],
+            usageTerms: [], // Placeholder for usage terms
+          })) || [], // <-- Map licenses array with proper structure
         }));
 
         setDisplayedBeats(beats);
-        setTotalBeats(beats.length); // TODO: Get total count from API response
+        setTotalBeats(searchResult.totalCount); // Use the actual total count from search result
 
       } catch (err) {
         if (!isMounted) return;
@@ -183,40 +200,12 @@ export default function ExplorePage() {
 
   // --- Handlers --- 
 
-  const handleFiltersChange = useCallback((newFilters: FilterValues) => {
+  const handleFiltersChange = useCallback((newFilters: Partial<FilterValues>) => {
     console.log('Filters applied in ExplorePage:', newFilters);
     // TODO: Update URL with filters
-    setFilters(newFilters);
+    setFilters(prevFilters => ({ ...prevFilters, ...newFilters }));
     setCurrentPage(1); // Reset pagination
   }, []);
-
-  const handleRemoveFilter = useCallback((filterType: keyof FilterValues, valueToRemove: string | number | [number, number]) => {
-    console.log('Removing filter:', filterType, valueToRemove);
-    setFilters(currentFilters => {
-        const newFilters = { ...currentFilters };
-
-        switch (filterType) {
-            case 'genres':
-                newFilters.genres = (newFilters.genres || []).filter(g => g !== valueToRemove);
-                break;
-            case 'bpm':
-                // Reset BPM to default when the badge is removed
-                // TODO: Get default from shared config
-                newFilters.bpm = [60, 180];
-                break;
-            case 'keys':
-                newFilters.keys = (newFilters.keys || []).filter(k => k !== valueToRemove);
-                break;
-            case 'tags':
-                newFilters.tags = (newFilters.tags || []).filter(t => t !== valueToRemove);
-                break;
-        }
-        // Trigger re-fetch by updating state
-        // handleFiltersChange(newFilters); // Re-use existing logic to apply and reset page
-        return newFilters; // Return the updated filters object
-    });
-    setCurrentPage(1); // Reset pagination after filter removal
-}, []);
 
   // Debounced search term update and URL push
   const debounce = (func: Function, delay: number) => {
@@ -278,147 +267,121 @@ export default function ExplorePage() {
 
   // --- JSX Structure ---
   return (
-    // Consistent Page Container
-    <div className="min-h-screen text-white">
-      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
-        <header className="mb-10 sm:mb-12 text-center">
-          <h1 className="text-4xl sm:text-5xl font-bold mb-2">
-            Explore {contentType ? contentType.charAt(0).toUpperCase() + contentType.slice(1) + 's' : 'Sounds'}
-          </h1>
-          <p className="text-lg text-gray-400">
-            Discover your next hit sound.
-          </p>
-        </header>
-
-        {/* Flex Container for Sidebar and Main Content */}
-        <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
-          {/* Sidebar */}
-          <div className="hidden lg:block w-full lg:w-1/4 xl:w-1/5 flex-shrink-0">
-             <FilterSidebar
-                className="sticky top-24" // Add sticky positioning for desktop
-                onFiltersChange={handleFiltersChange}
-                initialFilters={filters} 
-             />
-           </div>
-
-          {/* Mobile Filter Trigger Button & Sheet */} 
-          <div className="mb-6 lg:hidden flex justify-end">
-              <Sheet>
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* MODIFICATION: Added lg:justify-between to center the main content between the sidebar and a new spacer div. */}
+        <div className="flex flex-col lg:flex-row lg:justify-between lg:gap-8">
+          {/* --- Filter Sidebar (Desktop) --- */}
+          <aside className="w-full lg:w-64 xl:w-72 flex-shrink-0 mb-6 lg:mb-0">
+            <div className="sticky top-24">
+              <div className="flex justify-between items-center mb-4 lg:hidden">
+                <h2 className="text-xl font-bold">Filters</h2>
+                <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
                   <SheetTrigger asChild>
-                      <Button variant="outline" className="flex items-center gap-2 bg-white/5 border-white/10 hover:bg-white/10">
-                          <ListFilter size={18} />
-                          Filters
-                      </Button>
+                    <Button variant="outline" size="icon">
+                      <ListFilter className="h-4 w-4" />
+                      <span className="sr-only">Open filters</span>
+                    </Button>
                   </SheetTrigger>
-                  <SheetContent side="left" className="bg-black/90 backdrop-blur-xl border-r border-white/10 text-white w-full max-w-xs p-6 overflow-y-auto">
-                      <SheetHeader className="mb-4">
-                          <SheetTitle className="text-xl font-semibold flex items-center">
-                              <ListFilter size={20} className="mr-2 text-gray-400" />
-                              Filters
-                          </SheetTitle>
-                      </SheetHeader>
-                      {/* Render FilterSidebar inside the sheet for mobile */}
-                      <FilterSidebar
-                          onFiltersChange={handleFiltersChange}
+                  <SheetContent side="left" className="w-[300px] sm:w-[400px] p-0">
+                    <SheetHeader className="p-4 border-b">
+                      <SheetTitle>Filters</SheetTitle>
+                    </SheetHeader>
+                    <ScrollArea className="h-[calc(100%-4.5rem)]">
+                        <div className="p-4">
+                        <FilterSidebar
                           initialFilters={filters}
-                          // Optionally add a prop to hide the outer sticky container logic if needed
-                      />
-                      {/* TODO: Consider adding a close button or Apply button inside SheetFooter? */}
-                      {/* SheetClose could be used, or rely on the Apply button within FilterSidebar */} 
+                          onFiltersChange={handleFiltersChange}
+                        />
+                      </div>
+                    </ScrollArea>
                   </SheetContent>
-              </Sheet>
-          </div>
+                </Sheet>
+              </div>
+              <div className="hidden lg:block">
+                <FilterSidebar
+                  initialFilters={filters}
+                  onFiltersChange={handleFiltersChange}
+                />
+              </div>
+            </div>
+          </aside>
 
-          {/* Main Content Area */}
-          <main className="w-full lg:flex-1"> {/* Changed lg:w-3/4 xl:w-4/5 to lg:flex-1 for better flex behavior */}
-            {/* Active Filters Display */}
-            <ActiveFilters filters={filters} onRemoveFilter={handleRemoveFilter} />
+          {/* --- Main Content --- */}
+          <main className="flex-1 min-w-0">
+            <h1 className="text-4xl font-bold tracking-tight text-center mb-2">Explore Sounds</h1>
+            <p className="text-center text-muted-foreground mb-8">Discover your next hit sound.</p>
 
-            {/* Search & Sort Controls */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center mb-6">
-              <div className="relative w-full sm:max-w-xs">
+            {/* Search and controls */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+              <div className="relative w-full sm:w-auto sm:flex-grow max-w-lg mx-auto">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  type="text"
-                  placeholder={`Search ${contentType ? contentType + 's' : 'sounds'}...`}
+                  type="search"
+                  placeholder="Search sounds, genres, moods..."
+                  className="pl-9 w-full"
                   value={searchTerm}
                   onChange={handleSearchChange}
-                  className="w-full pl-10 pr-4 py-2.5 text-sm text-white bg-white/5 backdrop-blur-sm border border-white/10 rounded-full focus:outline-none focus:ring-1 focus:ring-indigo-500/60 focus:border-transparent"
                 />
-                 <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               </div>
 
-              {/* Visually Group Layout Toggle and Sort Dropdown */}
-              <div className="flex items-center gap-3 p-1 bg-white/5 rounded-full border border-white/10">
-                 {/* Layout Toggle (Inner div removed, adjusted styling) */}
+              <div className="flex items-center gap-2">
                 <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleLayoutChange('grid')} // Use handler
-                    className={cn(
-                        "rounded-full w-8 h-8",
-                        layoutMode === 'grid' ? 'bg-indigo-500/50 text-white' : 'text-gray-400 hover:text-white hover:bg-white/10'
-                    )}
-                    aria-label="Grid view"
-                    >
-                    <LayoutGrid size={18} />
+                  variant={layoutMode === 'grid' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  onClick={() => handleLayoutChange('grid')}
+                  aria-label="Grid view"
+                >
+                  <LayoutGrid className="h-4 w-4" />
                 </Button>
                 <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleLayoutChange('list')} // Use handler
-                    className={cn(
-                        "rounded-full w-8 h-8",
-                        layoutMode === 'list' ? 'bg-indigo-500/50 text-white' : 'text-gray-400 hover:text-white hover:bg-white/10'
-                    )}
-                    aria-label="List view"
-                    >
-                    <List size={18} />
+                  variant={layoutMode === 'list' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  onClick={() => handleLayoutChange('list')}
+                  aria-label="List view"
+                >
+                  <List className="h-4 w-4" />
                 </Button>
 
-                {/* Separator (Optional) */}
-                <div className="h-5 w-px bg-white/10 mx-1"></div>
-
-                {/* Sort Dropdown (Adjusted styling) */}
-                 <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        {/* Remove default button border/bg, rely on outer container */}
-                        <Button variant="ghost" className="flex items-center gap-1 text-sm text-gray-300 hover:text-white px-3 h-8 hover:bg-transparent">
-                             <span>{currentSortLabel}</span>
-                             <ChevronDown size={16} />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-48 bg-black/90 backdrop-blur-xl border-white/10 text-gray-300">
-                        <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-                        <DropdownMenuSeparator className="bg-white/10"/>
-                        <DropdownMenuRadioGroup value={sortOrder} onValueChange={(value) => handleSortChange(value as SortOrder)}> // Use handler
-                             {sortOptions.map((option) => (
-                                <DropdownMenuRadioItem key={option.value} value={option.value} className="focus:bg-white/10 cursor-pointer">
-                                    {option.label}
-                                </DropdownMenuRadioItem>
-                            ))}
-                        </DropdownMenuRadioGroup>
-                    </DropdownMenuContent>
-                 </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-[150px] justify-between">
+                      <span>{sortOptions.find(o => o.value === sortOrder)?.label}</span>
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-[150px]">
+                    <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuRadioGroup value={sortOrder} onValueChange={(value) => setSortOrder(value as SortOrder)}>
+                      {sortOptions.map(option => (
+                        <DropdownMenuRadioItem key={option.value} value={option.value}>
+                          {option.label}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-            </div> {/* End Search & Sort Controls */}
+            </div>
+            
+            <ActiveFilters filters={filters} onFiltersChange={handleFiltersChange} defaultBpmRange={[60, 180]} defaultPriceRange={[0, 200]} className="mb-6"/>
 
             {/* --- Conditional Rendering Section --- */}
 
             {/* Loading State */}
             {isLoading && (
                 <div className="flex justify-center items-center min-h-[300px]">
-                    <Loader2 className="h-12 w-12 animate-spin text-indigo-400" />
+                    <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
                 </div>
             )}
 
             {/* Error State */}
             {!isLoading && error && (
-                <div className="flex flex-col items-center justify-center min-h-[300px] bg-red-900/20 border border-red-700 rounded-lg p-6 text-center">
-                    <AlertCircle className="h-10 w-10 text-red-500 mb-3" />
-                    <p className="text-red-400 font-semibold mb-2">Failed to load beats</p>
-                    <p className="text-sm text-gray-400">{error}</p>
-                    {/* Optional: Add a retry button if you implement refetch logic */}
-                    {/* <Button variant="outline" size="sm" className="mt-4" onClick={fetchData}>Retry</Button> */} 
+                <div className="flex flex-col items-center justify-center min-h-[300px] bg-destructive/10 border border-destructive rounded-lg p-6 text-center">
+                    <AlertCircle className="h-10 w-10 text-destructive mb-3" />
+                    <p className="text-destructive font-semibold mb-2">Failed to load beats</p>
+                    <p className="text-sm text-muted-foreground">{error}</p>
                 </div>
             )}
 
@@ -434,19 +397,20 @@ export default function ExplorePage() {
                                 ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3" // Adjusted grid cols slightly
                                 : "grid-cols-1" // List view takes full width
                         )}>
-                            {displayedBeats.map((beat) => (
-                                <BeatCard
+                            {displayedBeats.map((beat, index) => (
+                                <TrackCard
                                     key={beat.id}
                                     beat={beat}
-                                    // Pass layoutMode if BeatCard needs to adapt its internal style
-                                    // layout={layoutMode}
+                                    fullTrackList={displayedBeats}
+                                    index={index}
+                                    displayMode={layoutMode}
                                 />
                             ))}
                         </div>
                     ) : (
                         // Empty State
                         <div className="flex justify-center items-center min-h-[200px]">
-                             <p className="text-gray-400 text-center mt-10">
+                             <p className="text-muted-foreground text-center mt-10">
                                 No beats found matching your criteria.
                             </p>
                         </div>
@@ -465,10 +429,14 @@ export default function ExplorePage() {
                 </> // Closing React Fragment
             )} {/* End Content Display Block */}
 
-          </main> {/* Closing Main Content Area */}
-        </div> {/* Closing Flex Container */}
-      </div> {/* Closing Page Container */}
-    </div> // Closing Root Element
+          </main>
+
+          {/* MODIFICATION: Added spacer div. This is invisible but takes up the same width as the sidebar on desktop, pushing the main content to the center. */}
+          <div className="hidden lg:block w-64 xl:w-72 flex-shrink-0" aria-hidden="true"></div>
+        </div>
+      </div>
+      <SlideOutPanel />
+    </div>
   );
 } 
 

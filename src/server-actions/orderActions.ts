@@ -1,13 +1,13 @@
 'use server';
 
 import { z } from 'zod';
-import prisma from '@/lib/prisma';
+import prisma from '@/lib/db/prisma';
 import { Prisma } from '@prisma/client';
 import { getInternalUserId } from '@/lib/userUtils';
 import { createSignedUrl } from '@/lib/storage';
 import { clerkClient, verifyToken } from '@clerk/nextjs/server';
 import type { OrderStatus } from '@prisma/client';
-import { stripe } from '@/lib/stripe';
+import { stripe } from '@/lib/payments/stripe';
 
 // Define Zod Schema
 const downloadSchema = z.object({

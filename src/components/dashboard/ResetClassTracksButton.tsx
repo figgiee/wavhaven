@@ -2,7 +2,7 @@
 
 import React, { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
-import { resetClassTrackTitles } from '@/server-actions/trackActions'; // Import the new action
+// import { resetClassTrackTitles } from '@/server-actions/trackActions'; // Function not implemented yet
 import { toast } from 'sonner';
 import { RotateCcw } from 'lucide-react'; // Using a reset icon
 
@@ -19,7 +19,8 @@ export default function ResetClassTracksButton() {
     startTransition(async () => {
       const toastId = toast.loading('Resetting track titles to \"class\"...');
       try {
-        const result = await resetClassTrackTitles(); // Call the reset action
+        // const result = await resetClassTrackTitles(); // Function not implemented yet
+        const result = { success: false, error: 'Function not implemented yet', resetCount: 0 };
         if (result.success) {
           if (result.resetCount > 0) {
             toast.success('Titles Reset!', { 

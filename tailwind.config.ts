@@ -72,9 +72,10 @@ const config: Config = {
           900: 'hsl(var(--neutral-900))',
           950: 'hsl(var(--neutral-950))',
         },
-        // TODO: Define cyan-glow and abyss-blue if they are custom theme colors
-        // 'cyan-glow': '#00e0ff', // Example
-        // 'abyss-blue': '#030712', // Example 
+        // Custom brand colors
+        'cyan-glow': '#00D4FF',
+        'abyss-blue': '#030712',
+        'magenta-spark': '#FF0080', 
       },
       spacing: {
         '128': '32rem', // Example custom spacing
@@ -115,10 +116,20 @@ const config: Config = {
           '0%, 100%': { backgroundPosition: '-200% 0' },
           '50%': { backgroundPosition: '200% 0' },
         },
+        "logo-glow": {
+          '0%, 100%': { filter: 'drop-shadow(0 0 5px rgba(0, 212, 255, 0.5))' },
+          '50%': { filter: 'drop-shadow(0 0 15px rgba(0, 212, 255, 0.8))' },
+        },
+        "wave-pulse": {
+          '0%, 100%': { opacity: '0.7', transform: 'scale(1)' },
+          '50%': { opacity: '1', transform: 'scale(1.05)' },
+        },
       },
       animation: {
         "bg-pan": "bg-pan 10s linear infinite alternate",
         "shimmer": 'shimmer 2s infinite linear',
+        "logo-glow": 'logo-glow 3s ease-in-out infinite',
+        "wave-pulse": 'wave-pulse 2s ease-in-out infinite',
       },
       backgroundImage: {
         "hero-gradient-light": "linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--secondary) / 0.1) 50%, hsl(var(--accent) / 0.1))",
@@ -129,6 +140,11 @@ const config: Config = {
         'glow-cyan-md': '0 0 15px 2px rgba(0, 224, 255, 0.4)',
         'subtle-lift': '0 4px 15px rgba(0,0,0,0.2)', // For dark theme, shadows are subtle
         'card-hover': '0 8px 25px rgba(0, 224, 255, 0.1)', // Subtle glow on card hover
+      },
+      dropShadow: {
+        'glow-cyan': '0 0 10px rgba(0, 212, 255, 0.7)',
+        'glow-cyan-sm': '0 0 5px rgba(0, 212, 255, 0.5)',
+        'glow-cyan-lg': '0 0 20px rgba(0, 212, 255, 0.8)',
       },
     },
   },

@@ -274,7 +274,11 @@ export default function UploadPage() {
 
             const responseBody = await prepareBulkUpload({ 
                 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Destructuring to omit index from payload
-                tracks: apiPayload.tracks.map(({ index, ...rest }) => rest) // Pass only track data
+                tracks: apiPayload.tracks.map(({ index, audioFile, coverImage, ...rest }) => ({
+                    ...rest,
+                    contentType: 'beats' as const, // Default to beats for bulk upload
+                    price: 0 // Default price for bulk upload
+                })) // Pass only track data with required fields
             });
             
             const successfulPreparations: UploadPreparationResult[] = responseBody.preparations || []; // Use const

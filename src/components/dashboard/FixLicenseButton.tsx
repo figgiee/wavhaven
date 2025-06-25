@@ -2,7 +2,7 @@
 
 import React, { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
-import { fixMissingBasicLicenses } from '@/server-actions/trackActions';
+// import { fixMissingBasicLicenses } from '@/server-actions/trackActions'; // Function not implemented yet
 import { toast } from 'sonner';
 import { RefreshCw } from 'lucide-react';
 
@@ -25,7 +25,8 @@ export default function FixLicenseButton() {
     startTransition(async () => {
       const toastId = toast.loading('Fixing licenses...');
       try {
-        const result = await fixMissingBasicLicenses(targetPrice);
+        // const result = await fixMissingBasicLicenses(targetPrice); // Function not implemented yet
+        const result = { success: false, error: 'Function not implemented yet', fixedCount: 0 };
         if (result.success) {
           if (result.fixedCount > 0) {
             toast.success('Licenses Fixed!', { 

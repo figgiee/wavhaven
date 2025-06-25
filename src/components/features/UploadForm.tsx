@@ -9,13 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { uploadTrack } from '@/server-actions/trackActions';
+import { uploadTrack } from '@/server-actions/tracks/trackMutations';
 import { cn } from '@/lib/utils';
 import { Music, Repeat, Package, Sliders, Upload, Tag } from 'lucide-react';
 import * as musicMetadata from 'music-metadata-browser';
-// Import only the Meyda-based analysis to avoid essentia.js errors
-// import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
-import { useMeydaAudioAnalysis } from '@/hooks/useMeydaAudioAnalysis';
 
 // Define content types
 type ContentType = 'beats' | 'loops' | 'soundkits' | 'presets';
@@ -44,10 +41,6 @@ export function UploadForm() {
   const [metadataSource, setMetadataSource] = useState<string>('Manual entry');
   const [suggestedGenres, setSuggestedGenres] = useState<string[]>([]);
   const [suggestedMoods, setSuggestedMoods] = useState<string[]>([]);
-
-  // Import our custom audio analysis hooks
-  // const { analyzeAudio, isAnalyzing: isEssentiaAnalyzing } = useAudioAnalysis();
-  const { analyzeAudio: analyzeMeyda, isAnalyzing: isMeydaAnalyzing, meydaLoaded } = useMeydaAudioAnalysis();
 
   const {
     register,
@@ -161,47 +154,7 @@ export function UploadForm() {
           }
         }
         
-        // If we still missing BPM or key data, use audio analysis
-        // Try Meyda first for better key detection via chroma analysis
-        if (!foundBpm || !foundKey) {
-          try {
-            if (meydaLoaded) {
-              const meydaResults = await analyzeMeyda(file);
 
-              // Update form fields only if they weren't found in filename
-              if (meydaResults.bpm && (!foundBpm || foundBpm === '')) {
-                foundBpm = String(meydaResults.bpm);
-                setValue('bpm', foundBpm);
-              }
-              if (meydaResults.key && (!foundKey || foundKey === '')) {
-                foundKey = meydaResults.key;
-                setValue('key', foundKey);
-              }
-
-              // Store suggestions in state INSTEAD of auto-adding to tags
-              setSuggestedGenres(meydaResults.genres || []);
-              setSuggestedMoods(meydaResults.moods || []);
-
-              if (meydaResults.bpm || meydaResults.key || (meydaResults.genres && meydaResults.genres.length > 0) || (meydaResults.moods && meydaResults.moods.length > 0)) {
-                toast.success('Audio analysis complete', {
-                  description: `Detected: ${meydaResults.bpm ? `BPM: ${meydaResults.bpm}` : ''} ${meydaResults.key ? `Key: ${meydaResults.key}` : ''}`,
-                  duration: 3000,
-                });
-                metadataSource = 'Meyda audio analysis';
-              } else {
-                 toast.info('Could not extract BPM/Key via Meyda.');
-              }
-            } else {
-              toast.warning("Meyda not loaded, skipping advanced analysis.");
-            }
-          } catch (analysisError) {
-            console.error("Error during Meyda analysis:", analysisError);
-            toast.error("Audio analysis failed.");
-            // Clear suggestions on error
-            setSuggestedGenres([]);
-            setSuggestedMoods([]);
-          }
-        }
         
         // Set form values, only if fields are empty (don't overwrite user input)
         const currentTitle = watch('title');
@@ -415,7 +368,7 @@ export function UploadForm() {
                         {...register('bpm')} 
                         className="bg-gray-900 border-gray-800 text-white"
                       />
-                      {(isMetadataProcessing || isMeydaAnalyzing) && (
+                      {isMetadataProcessing && (
                         <div className="absolute right-2 top-2">
                           <div className="h-5 w-5 rounded-full border-2 border-t-transparent border-indigo-500 animate-spin"></div>
                         </div>
@@ -435,7 +388,7 @@ export function UploadForm() {
                         {...register('key')} 
                         className="bg-gray-900 border-gray-800 text-white placeholder:text-gray-500"
                       />
-                      {(isMetadataProcessing || isMeydaAnalyzing) && (
+                      {isMetadataProcessing && (
                         <div className="absolute right-2 top-2">
                           <div className="h-5 w-5 rounded-full border-2 border-t-transparent border-indigo-500 animate-spin"></div>
                         </div>

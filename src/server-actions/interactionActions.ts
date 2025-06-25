@@ -1,7 +1,7 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
-import prisma from '@/lib/prisma';
+import prisma from '@/lib/db/prisma';
 import { getInternalUserId } from '@/lib/userUtils';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@prisma/client';

@@ -14,7 +14,7 @@ interface DownloadButtonProps {
   licenseName?: string; // For toast messages
 }
 
-export default function DownloadButton({
+function DownloadButton({
   trackFileId,
   filename = 'download', // Default filename
   trackTitle = 'Track',
@@ -75,4 +75,7 @@ export default function DownloadButton({
       {isPending ? 'Preparing...' : 'Download'}
     </Button>
   );
-} 
+}
+
+export default DownloadButton;
+export { DownloadButton }; 

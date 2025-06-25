@@ -5,7 +5,7 @@ Wavhaven is a modern marketplace platform for music producers to sell licenses f
 ## Tech Stack
 
 *   **Frontend:** Next.js (App Router), React, TypeScript, Tailwind CSS, shadcn/ui
-*   **Backend:** Next.js Server Actions
+*   **Backend:** Next.js Server Actions (organized with CQRS pattern)
 *   **Database:** Supabase (PostgreSQL)
 *   **Authentication:** Clerk
 *   **File Storage:** Supabase Storage
@@ -23,15 +23,39 @@ Wavhaven is a modern marketplace platform for music producers to sell licenses f
     *   `src/components/forms/`: Reusable form components.
     *   `src/components/layout/`: Layout components (header, footer).
     *   `src/components/ui/`: Shadcn/ui components.
-*   `src/lib/`: Core utilities, API clients, server actions.
-    *   `src/lib/actions/`: Server Actions.
+*   `src/server-actions/`: Server Actions organized by domain and responsibility.
+    *   `src/server-actions/tracks/`: Track-related operations.
+        *   `trackQueries.ts`: Read operations (searches, fetching data).
+        *   `trackMutations.ts`: Write operations (create, update, delete).
+        *   `trackInteractions.ts`: User interactions (likes, play counts).
+    *   `src/server-actions/users/`: User-related operations.
+        *   `userQueries.ts`: User data retrieval.
+        *   `userMutations.ts`: User profile management.
+    *   `src/server-actions/admin/`: Administrative functions.
+*   `src/lib/`: Core utilities, API clients, and shared services.
+    *   `src/lib/db/`: Database configuration (Prisma).
+    *   `src/lib/auth/`: Authentication utilities (Clerk).
+    *   `src/lib/payments/`: Payment processing (Stripe).
     *   `src/lib/supabase/`: Supabase client configurations.
+*   `src/services/`: Business logic and external service integrations.
 *   `src/stores/`: Zustand state management stores.
-*   `src/types/`: TypeScript type definitions.
+*   `src/types/`: TypeScript type definitions organized by domain.
+    *   `src/types/tracks/`: Track-related types.
+    *   `src/types/users/`: User-related types.
+    *   `src/types/licenses/`: License-related types.
 *   `src/emails/`: React Email templates.
 *   `prisma/`: Prisma schema and migrations.
 *   `supabase/`: Supabase specific configurations (e.g., RLS policies, migrations).
 *   `public/`: Static assets.
+
+## Architecture Principles
+
+This codebase follows **SOLID principles** and **Separation of Concerns (SoC)**:
+
+*   **Single Responsibility Principle**: Each server action file has a focused responsibility.
+*   **Command Query Responsibility Segregation (CQRS)**: Read operations are separated from write operations.
+*   **Domain-Driven Organization**: Code is organized by business domain (tracks, users, etc.).
+*   **Type Safety**: Comprehensive TypeScript coverage with domain-specific type organization.
 
 ## Getting Started
 

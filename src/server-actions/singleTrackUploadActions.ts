@@ -6,9 +6,15 @@ import { getInternalUserId } from '@/lib/userUtils';
 import type { ContentType as ContentTypeEnum } from '@prisma/client';
 import { TrackFileType, LicenseType, Prisma, ContentType } from '@prisma/client';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { generateUniqueSlug } from './trackActions';
-import prisma from '@/lib/prisma'; // Import prisma client
+import { generateUniqueSlug } from './tracks/trackMutations';
+import prisma from '@/lib/db/prisma'; // Import prisma client
 import { revalidatePath } from 'next/cache';
+import { 
+    sanitizeFilename, 
+    generateTrackStoragePaths, 
+    createSignedUploadUrls,
+    getPublicUrl 
+} from '@/services/track.service';
 
 // --- Input Schema for Preparation ---
 const prepareInputSchema = z.object({
@@ -40,14 +46,7 @@ interface PrepareResult {
     };
 }
 
-// --- Filename Sanitization Helper (Consider centralizing) ---
-const sanitizeFilename = (filename: string): string => {
-    if (!filename) return '';
-    const noSpaces = filename.replace(/\s+/g, '_');
-    const normalized = noSpaces.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const sanitized = normalized.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-    return sanitized.slice(0, 200);
-};
+// --- Filename Sanitization moved to track.service.ts ---
 
 // --- Constants ---
 const BUCKET_NAME = 'wavhaven-tracks'; // Ensure this matches your bucket
@@ -166,31 +165,34 @@ export async function prepareSingleTrackUpload(
              throw new Error("Transaction completed but failed to get track ID.");
         }
 
-        // 7. Prepare Storage Paths & Generate Signed URLs (Uses Supabase Storage)
-        const sanitizedPreviewFilename = sanitizeFilename(trackData._previewFileName);
-        const sanitizedCoverFilename = sanitizeFilename(trackData._coverFileName);
-        if (!sanitizedPreviewFilename || !sanitizedCoverFilename) {
-            throw new Error('Filename became empty after sanitization.');
+        // 7. Prepare Storage Paths & Generate Signed URLs (Uses Track Service)
+        const { previewStoragePath, coverStoragePath } = generateTrackStoragePaths(
+            producerId!,
+            newTrackId,
+            trackData._previewFileName,
+            trackData._coverFileName
+        );
+        
+        if (!previewStoragePath || !coverStoragePath) {
+            throw new Error('Failed to generate storage paths.');
         }
-        const previewStoragePath = `users/${producerId!}/tracks/${newTrackId}/${sanitizedPreviewFilename}`;
-        const coverStoragePath = `users/${producerId!}/tracks/${newTrackId}/${sanitizedCoverFilename}`;
+        
         tempPreviewPath = previewStoragePath;
         tempCoverPath = coverStoragePath;
 
         console.log("[prepareSingleTrackUpload] Generating signed URLs...");
-        const [previewUrlResult, coverUrlResult] = await Promise.all([
-            supabaseAdmin.storage.from(BUCKET_NAME).createSignedUploadUrl(previewStoragePath, { expiresIn: SIGNED_URL_UPLOAD_EXPIRY }),
-            supabaseAdmin.storage.from(BUCKET_NAME).createSignedUploadUrl(coverStoragePath, { expiresIn: SIGNED_URL_UPLOAD_EXPIRY })
-        ]);
+        const { urls, error } = await createSignedUploadUrls(
+            BUCKET_NAME,
+            [previewStoragePath, coverStoragePath],
+            SIGNED_URL_UPLOAD_EXPIRY
+        );
 
-        if (previewUrlResult.error || !previewUrlResult.data?.signedUrl) {
-            console.error('Preview URL Error:', previewUrlResult.error);
-            throw new Error(`Failed to create signed URL for preview: ${previewUrlResult.error?.message}`);
+        if (error || urls.length !== 2) {
+            console.error('Signed URL generation error:', error);
+            throw new Error(error || 'Failed to create signed URLs');
         }
-        if (coverUrlResult.error || !coverUrlResult.data?.signedUrl) {
-            console.error('Cover URL Error:', coverUrlResult.error);
-            throw new Error(`Failed to create signed URL for cover: ${coverUrlResult.error?.message}`);
-        }
+
+        const [previewUploadUrl, coverUploadUrl] = urls;
         console.log("[prepareSingleTrackUpload] Signed URLs generated successfully.");
 
         // 8. Prepare Result (Success)
@@ -198,10 +200,10 @@ export async function prepareSingleTrackUpload(
             success: true,
             preparations: {
                 trackId: newTrackId,
-                previewUploadUrl: previewUrlResult.data.signedUrl,
-                coverUploadUrl: coverUrlResult.data.signedUrl,
-                previewStoragePath: previewStoragePath,
-                coverStoragePath: coverStoragePath,
+                previewUploadUrl,
+                coverUploadUrl,
+                previewStoragePath,
+                coverStoragePath,
             },
         };
 
@@ -441,13 +443,7 @@ export async function finalizeSingleTrackUpload(
     }
 }
 
-// --- Helper function (remains the same) ---
-function getPublicUrl(storagePath: string): string | null {
-    if (!storagePath) return null;
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl) return null;
-    return `${supabaseUrl}/storage/v1/object/public/${BUCKET_NAME}/${storagePath}`;
-}
+// --- Helper function moved to track.service.ts ---
 
 // --- NEW: Cleanup Failed Upload Action ---
 /**

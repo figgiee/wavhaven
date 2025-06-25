@@ -2,7 +2,7 @@ import React from 'react';
 import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { UserProfileHeaderData } from '@/types/user'; // Import the type
+import { UserProfileHeaderData } from '@/types'; // Import the type
 import { cn } from '@/lib/utils'; // For class merging
 import { format } from 'date-fns'; // For date formatting
 import Link from 'next/link'; // Import Link

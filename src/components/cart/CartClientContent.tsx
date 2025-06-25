@@ -119,7 +119,7 @@ export function CartClientContent() {
           {items.map((item) => (
             <li key={item.licenseId} className="flex items-start justify-between border-b border-border pb-6 last:border-b-0 last:pb-0">
               <div className="flex items-start gap-4">
-                <Link href={`/track/${item.slug || item.trackId}`} className="flex-shrink-0">
+                <Link href={`/track/${item.trackId}`} className="flex-shrink-0">
                   <Image
                     src={item.imageUrl || '/coverart/default-cover.png'}
                     alt={item.trackTitle ?? 'Track cover'}
@@ -129,7 +129,7 @@ export function CartClientContent() {
                   />
                 </Link>
                 <div className="flex-grow pt-1">
-                  <Link href={`/track/${item.slug || item.trackId}`} className="hover:text-primary transition-colors">
+                  <Link href={`/track/${item.trackId}`} className="hover:text-primary transition-colors">
                     <h3 className="font-semibold leading-snug text-foreground text-lg">{item.trackTitle}</h3>
                   </Link>
                   <p className="text-sm text-muted-foreground">by {item.producerName || 'Unknown Artist'}</p>

@@ -1,20 +1,20 @@
 import { Suspense } from 'react';
-import { searchTracks } from '@/server-actions/trackActions'; // Keep SearchFilters type if needed elsewhere, but not for props here
-import TrackGrid from '@/components/features/TrackGrid';
+import { searchTracks } from '@/server-actions/tracks/trackQueries';
+import { TrackGrid } from '@/components/explore/TrackGrid';
 import TrackFilters from '@/components/features/TrackFilters';
 import { Skeleton } from '@/components/ui/skeleton'; // For loading state
 
 // Define props for the page, explicitly listing expected searchParams
 // This matches how Next.js provides them
 interface BrowsePageProps {
-  searchParams: {
+  searchParams: Promise<{
     query?: string;
     mood?: string;
     minBpm?: string;
     maxBpm?: string;
     key?: string;
     page?: string; // For pagination later
-  };
+  }>;
 }
 
 // Main Page Component - Mark as async and await searchParams
@@ -46,20 +46,44 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
 
 // Separate async component accepting primitive filter props
 async function TrackGridLoader({ query }: { query: string }) { // Remove genre from props
-  // Call searchTracks with individual primitive arguments
-  const tracks = await searchTracks({ query }); // Remove genre from call
+  // Call searchTracks with individual primitive arguments and destructure the result
+  const { tracks } = await searchTracks({ query }); // Use correct parameter structure
+
+  // Convert TrackSearchResult[] to Beat[] format expected by TrackGrid
+  const convertedTracks = tracks.map(track => ({
+    id: track.id,
+    title: track.title,
+    slug: track.slug,
+    imageUrl: track.coverImageUrl,
+    coverImageUrl: track.coverImageUrl,
+    producerName: track.producer?.username || track.producer?.firstName || 'Unknown',
+    producerProfileUrl: track.producer?.username ? `/u/${track.producer.username}` : undefined,
+    price: track.licenses[0]?.price || null,
+    bpm: track.bpm,
+    key: track.key,
+    audioSrc: track.previewAudioUrl,
+    previewAudioUrl: track.previewAudioUrl,
+    beatUrl: `/track/${track.slug}`,
+    licenses: track.licenses?.map(l => ({
+      id: l.id,
+      name: l.name,
+      price: l.price,
+      includedFiles: l.filesIncluded || [],
+      usageTerms: [], // Add minimal usage terms or fetch if needed
+    })) || [],
+  }));
 
   // Determine if any filters were actually active
   const hasActiveFilters = !!query; // Update active filter check
 
-  if (tracks.length === 0 && hasActiveFilters) {
+  if (convertedTracks.length === 0 && hasActiveFilters) {
     return <p className="text-center text-gray-500 mt-8">No tracks found matching your criteria.</p>;
   }
-  if (tracks.length === 0) {
+  if (convertedTracks.length === 0) {
     return <p className="text-center text-gray-500 mt-8">No tracks available yet.</p>;
   }
 
-  return <TrackGrid tracks={tracks} />;
+  return <TrackGrid tracks={convertedTracks} isLoading={false} />;
 }
 
 // Simple skeleton loader for the grid - remains the same

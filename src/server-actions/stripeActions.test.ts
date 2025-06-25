@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { POST } from '@/app/api/webhooks/stripe/route';
 import { headers } from 'next/headers';
 import { NextRequest } from 'next/server';
-import { stripeClient } from '@/lib/stripe'; // Import without renaming
+import { stripeClient } from '@/lib/payments/stripe'; // Import without renaming
 // Remove direct prisma import, it's likely mocked or implicitly available
 // import prisma from '@/lib/prisma'; 
 import { Prisma } from '@prisma/client';
@@ -14,8 +14,8 @@ import Stripe from 'stripe'; // Keep Stripe type import if needed
 import { createCheckoutSession } from './stripeActions';
 
 // Import mocks (ensure paths match your setup)
-import { prisma } from '@/lib/prisma';
-import { stripe } from '@/lib/stripe';
+import { prisma } from '@/lib/db/prisma';
+import { stripe } from '@/lib/payments/stripe';
 // Import the module itself, not the specific mock implementation
 import * as ClerkServer from '@clerk/nextjs/server'; 
 import { getInternalUserId } from '@/lib/userUtils';

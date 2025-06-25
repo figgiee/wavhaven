@@ -1,7 +1,7 @@
 'use server';
 
 import { UserRole } from "@prisma/client";
-import prisma from "@/lib/prisma";
+import prisma from "@/lib/db/prisma";
 import { clerkClient } from "@clerk/nextjs/server";
 
 export const getUserProfileByUsername = async (username: string) => {
@@ -80,7 +80,7 @@ export const getUserTracksByUsername = async (
         // isApproved: true, // Consider adding if moderation (T28) is implemented
       },
       include: {
-        // Include necessary relations for BeatCard (adjust as needed)
+        // Include necessary relations for TrackCard (adjust as needed)
         producer: {
           select: { username: true, profileImageUrl: true }, // Example
         },
@@ -88,7 +88,7 @@ export const getUserTracksByUsername = async (
           select: { price: true, type: true }, // Example
           orderBy: { price: 'asc' },
         },
-        // Add other relations if BeatCard needs them (e.g., coverImage)
+        // Add other relations if TrackCard needs them (e.g., coverImage)
       },
       skip: (page - 1) * pageSize,
       take: pageSize,

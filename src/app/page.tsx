@@ -8,7 +8,8 @@ import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BeatCard } from '@/components/beat-card'; // Assuming you want to reuse this
+import TrackCard from '@/components/track-card';
+import type { Beat } from '@/types';
 
 // TODO: Define types for featured beats/producers if fetching data
 interface FeaturedBeat { /* ... Beat properties ... */ }
@@ -178,12 +179,27 @@ function HeroSection() {
 
 function FeaturedBeatsSection() {
    // TODO: Fetch actual featured beats data
-   const featuredBeats: any[] = Array.from({ length: 3 }); // Placeholder
-   
-   // TODO: Get addToCart action from cart store
-   const handleAddToCart = (beatId: string | number) => {
-     console.log('Add to cart:', beatId);
-   };
+   const featuredBeats: Beat[] = Array.from({ length: 3 }, (_, index) => ({
+     id: `featured-${index}`,
+     title: `Placeholder Beat ${index + 1}`,
+     slug: `placeholder-beat-${index + 1}`,
+             imageUrl: null, // Use default/fallback handling in components
+     producerName: 'Producer Name',
+     price: 29.99,
+     bpm: 140,
+     key: 'Cmin',
+     audioSrc: '#', // No actual audio for placeholder
+     beatUrl: `#`,
+     licenses: [{
+       id: `license-${index}`,
+       name: 'Basic License',
+       price: 29.99,
+       includedFiles: ['MP3', 'WAV'],
+       usageTerms: []
+     }],
+     tags: [{ id: `tag-${index}`, name: 'Hip Hop' }],
+     genre: { id: `genre-${index}`, name: 'Hip Hop', slug: 'hip-hop' }
+   }));
 
   return (
     <section className="py-24 sm:py-32 relative">
@@ -191,30 +207,20 @@ function FeaturedBeatsSection() {
         <div className="flex items-center justify-between mb-12">
           <h2 className="text-3xl sm:text-4xl font-bold text-white">Featured Beats</h2>
           <Button variant="link" asChild className="text-sm font-medium text-indigo-400 hover:text-indigo-300 px-0">
-            <Link href="/explore?sort=trending"> {/* TODO: Update link */} 
+            <Link href="/explore?sort=trending">
               View All <ArrowRight className="w-3 h-3 ml-1" />
             </Link>
           </Button>
         </div>
 
-        {/* TODO: Replace placeholder with actual BeatCard loop & potentially carousel */} 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
            {featuredBeats.map((beat, index) => (
-              // Assuming BeatCard takes a beat object matching its prop type
-              // Need to provide actual data here
-               <BeatCard 
-                  key={beat?.id || index} 
-                  beat={{
-                      id: beat?.id || `featured-${index}`,
-                      title: beat?.title || `Placeholder Beat ${index + 1}`,
-                      imageUrl: beat?.imageUrl || `https://via.placeholder.com/400x400/1f2937/818cf8?text=Beat+${index + 1}`,
-                      producerName: beat?.producerName || 'Producer Name',
-                      price: beat?.price || 29.99,
-                      bpm: beat?.bpm || 140,
-                      key: beat?.key || 'Cmin',
-                      audioSrc: beat?.audioSrc || '#',
-                      beatUrl: beat?.beatUrl || '#'
-                  }}
+               <TrackCard 
+                  key={beat.id} 
+                  beat={beat}
+                  fullTrackList={featuredBeats}
+                  index={index}
+                  variant="default"
                />
            ))}
         </div>
@@ -248,7 +254,7 @@ function FeaturedProducersSection() {
                             <div className="glass-effect p-6 rounded-2xl group-hover:bg-white/10 transition-all duration-300 transform group-hover:scale-[1.02] border border-white/5 group-hover:border-white/10">
                                 <div className="w-20 h-20 rounded-full mx-auto mb-5 overflow-hidden ring-2 ring-white/10 group-hover:ring-indigo-500/50 transition-all duration-300 bg-gradient-to-br from-indigo-700 to-purple-700">
                                      {/* TODO: Use Next/Image */}
-                                    <img src={producer?.avatarUrl || `https://via.placeholder.com/100x100/6366f1/ffffff?text=P${index+1}`}
+                                    <img src={producer?.avatarUrl || '/logo.svg'}
                                         alt={producer?.name || `Producer ${index+1}`}
                                         className="w-full h-full object-cover" />
                                 </div>

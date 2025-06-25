@@ -1,8 +1,8 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-export function createClient() {
-  const cookieStore = cookies();
+export async function createClient() {
+  const cookieStore = await cookies();
 
   // Define Supabase URL and anon key from environment variables
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -11,8 +11,8 @@ export function createClient() {
   // Create and return the Supabase client
   return createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
-      async get(name: string) {
-        const cookie = await cookieStore.get(name);
+      get(name: string) {
+        const cookie = cookieStore.get(name);
         return cookie?.value;
       },
       set(name: string, value: string, options: CookieOptions) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import type { License } from './license.types';
+import type { License } from '@/types';
 
 interface LicenseOptionCardProps {
     license: License;

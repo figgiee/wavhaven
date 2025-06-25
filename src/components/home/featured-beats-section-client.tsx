@@ -4,7 +4,7 @@ import Link from 'next/link'; // Likely not needed here, but was in original con
 import Image from 'next/image'; // Likely not needed here
 import { motion } from 'framer-motion';
 import TrackCard from '@/components/track-card';
-import type { Beat as BeatCardType } from '@/components/track-card';
+import type { Beat } from '@/types';
 import type { TrackSearchResult } from '@/types';
 import { cn } from "@/lib/utils"; // Was used by HeroSection, maybe not here
 
@@ -15,7 +15,7 @@ interface FeaturedBeatsClientProps {
 }
 
 export function FeaturedBeatsSectionClient({ initialTracks, error: initialError }: FeaturedBeatsClientProps) {
-  const adaptToBeatCardType = (track: TrackSearchResult): BeatCardType => ({
+  const adaptToTrackCardType = (track: TrackSearchResult): Beat => ({
     id: track.id,
     title: track.title,
     slug: track.slug,
@@ -48,7 +48,7 @@ export function FeaturedBeatsSectionClient({ initialTracks, error: initialError 
     updatedAt: track.updatedAt,
   });
 
-  const adaptedListForPlayerContext = initialTracks.map(adaptToBeatCardType);
+  const adaptedListForPlayerContext = initialTracks.map(adaptToTrackCardType);
 
   const sectionVariants = {
     hidden: { opacity: 0 },
@@ -82,7 +82,7 @@ export function FeaturedBeatsSectionClient({ initialTracks, error: initialError 
             {initialTracks.map((track, index) => (
               <motion.div key={track.id} variants={itemVariants}>
                 <TrackCard
-                  beat={adaptToBeatCardType(track)}
+                  beat={adaptToTrackCardType(track)}
                   fullTrackList={adaptedListForPlayerContext}
                   index={index}
                   className="w-full h-full"

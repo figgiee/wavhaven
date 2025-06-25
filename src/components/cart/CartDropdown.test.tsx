@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CartDropdown } from './CartDropdown';
+import { CartDropdown } from '../features/cart/CartDropdown';
 import { useCartStore } from '@/stores/use-cart-store';
 import { toast } from 'sonner';
 

@@ -1,21 +1,11 @@
 // src/middleware.ts
 import { clerkMiddleware } from '@clerk/nextjs/server';
-import { NextRequest } from 'next/server'; // Import NextRequest
 
 // Rely entirely on Clerk's default behavior and ENV vars for public routes
-console.log('[Middleware] Using explicit function wrapper around clerkMiddleware().');
+console.log('[Middleware] Using clerkMiddleware with default configuration.');
 
-// Create the handler once
-const clerkHandler = clerkMiddleware();
-
-// Define the middleware function to intercept the request
-export default function middleware(request: NextRequest) {
-  // Optional: Log headers again if needed for debugging
-  // console.log('[Middleware] Request Headers:', JSON.stringify(Object.fromEntries(request.headers.entries()), null, 2));
-
-  // Call the actual Clerk middleware handler
-  return clerkHandler(request);
-}
+// Export the clerk middleware directly
+export default clerkMiddleware();
 
 export const config = {
   matcher: [

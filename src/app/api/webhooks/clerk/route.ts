@@ -1,6 +1,6 @@
 import { Webhook } from 'svix';
 import { WebhookEvent } from '@clerk/nextjs/server';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db/prisma';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
@@ -79,7 +79,9 @@ export async function POST(req: Request) {
           clerkId: clerkId,
           username: username || null, // Use the username from Clerk, fallback to null
           email: primaryEmail, // Use the robustly found primary email
-          name: `${first_name || ''} ${last_name || ''}`.trim() || null, // Combine names, handle nulls
+          firstName: first_name || null,
+          lastName: last_name || null,
+          profileImageUrl: image_url || null,
         },
       });
       console.log(`Successfully created user record for Clerk ID: ${clerkId}`);
@@ -113,7 +115,9 @@ export async function POST(req: Request) {
         data: {
           username: username || null, // Update username from Clerk, fallback to null
           email: primaryEmail, // Use the robustly found primary email
-          name: `${first_name || ''} ${last_name || ''}`.trim() || null,
+          firstName: first_name || null,
+          lastName: last_name || null,
+          profileImageUrl: image_url || null,
         },
       });
       console.log(`Successfully updated user record for Clerk ID: ${clerkId}`);

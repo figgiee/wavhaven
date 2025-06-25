@@ -1,7 +1,7 @@
 import React from 'react';
 import { currentUser } from '@clerk/nextjs/server';
 import { OrderHistory } from '@/components/features/OrderHistory';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db/prisma';
 import { getInternalUserId } from '@/lib/userUtils'; // Assuming this utility exists
 
 export default async function DownloadsPage() {
@@ -43,11 +43,12 @@ export default async function DownloadsPage() {
                 select: {
                   id: true,
                   title: true,
-                  coverImageUrl: true, // Assuming this exists on Track
-                  // artistName: true, // Removed this incorrect field
+                  // coverImageUrl field doesn't exist in Track model
                   producer: { // Include the related producer
                     select: {
-                      name: true // Select the producer's name
+                      firstName: true,
+                      lastName: true,
+                      username: true // Select the producer's info
                     }
                   }
                 }

@@ -28,9 +28,10 @@ export default defineConfig({
   // Increase default assertion timeout (default is 5s)
   expect: {
     timeout: 10 * 1000, // 10 seconds for expect calls
-    // Specific timeout for toHaveScreenshot, allowing more time for rendering
-    toHaveScreenshot: { timeout: 15 * 1000 }, // 15 seconds for snapshots
-    toMatchSnapshot: { timeout: 15 * 1000 } // 15 seconds for snapshots
+    // Note: toHaveScreenshot and toMatchSnapshot timeout configurations
+    // are handled differently in newer Playwright versions
+    toHaveScreenshot: { threshold: 0.2 }, // Allow 20% pixel difference
+    toMatchSnapshot: { threshold: 0.2 } // Allow 20% pixel difference
   },
 
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */

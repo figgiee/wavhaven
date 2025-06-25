@@ -21,8 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { TrackForEdit } from '@/types';
-import { updateTrackDetails } from '@/server-actions/trackActions';
-import { deleteTrackFile } from '@/server-actions/trackActions';
+import { updateTrackDetails } from '@/server-actions/tracks/trackMutations';
 import { TrackFileType } from '@prisma/client';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';

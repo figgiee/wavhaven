@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db/prisma';
 // import { getInternalUserId } from '@/lib/userUtils'; // Remove outdated import
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
@@ -36,9 +36,19 @@ export default async function ProducerDashboardPage() {
   const internalUserId = userWithProfile.id;
 
   // Fetch tracks directly using the internal User ID (producerId)
-  let tracks = [];
+  let tracks: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    bpm: number | null;
+    key: string | null;
+    isPublished: boolean;
+    artworkUrl: string | null;
+    createdAt: Date;
+    licenses: Array<{ price: any }>;
+  }> = [];
   try {
-    tracks = await prisma.track.findMany({
+    const rawTracks = await prisma.track.findMany({
       where: {
         producerId: internalUserId, // Use producerId (linked to User.id)
       },
@@ -48,10 +58,27 @@ export default async function ProducerDashboardPage() {
       select: {
           id: true,
           title: true,
+          slug: true,
+          bpm: true,
+          key: true,
           isPublished: true,
           createdAt: true,
+          licenses: {
+            select: {
+              price: true,
+            }
+          }
       }
     });
+    
+    // Add the missing artworkUrl field with null value and convert Decimal prices to numbers
+    tracks = rawTracks.map(track => ({
+      ...track,
+      artworkUrl: null as string | null,
+      licenses: track.licenses.map(license => ({
+        price: Number(license.price), // Convert Decimal to number
+      })),
+    }));
   } catch (error) {
     console.error("Error fetching producer tracks for dashboard:", error);
     // Optionally show an error message to the user

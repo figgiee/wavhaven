@@ -26,7 +26,7 @@ export function CheckoutItemsList({ items }: CheckoutItemsListProps) {
         {items.map((item) => (
           <li key={item.licenseId} className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Link href={`/track/${item.slug || item.trackId}`} className="flex-shrink-0" tabIndex={-1}> 
+              <Link href={`/track/${item.trackId}`} className="flex-shrink-0" tabIndex={-1}> 
                 <Image
                   src={item.imageUrl || '/coverart/default-cover.png'}
                   alt={item.trackTitle ?? 'Track cover'}
@@ -36,7 +36,7 @@ export function CheckoutItemsList({ items }: CheckoutItemsListProps) {
                 />
               </Link>
               <div className="flex-grow">
-                 <Link href={`/track/${item.slug || item.trackId}`} className="hover:text-primary transition-colors text-sm font-medium leading-tight line-clamp-1">
+                 <Link href={`/track/${item.trackId}`} className="hover:text-primary transition-colors text-sm font-medium leading-tight line-clamp-1">
                     {item.trackTitle}
                  </Link>
                 <p className="text-xs text-muted-foreground">{item.licenseName}</p>

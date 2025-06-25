@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea'; // For Bio
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { updateUserProfile, UserProfileUpdatePayload } from '@/server-actions/userActions'; // Import the server action and type
+import { updateUserProfile, UserProfileUpdatePayload } from '@/server-actions/users/userMutations'; // Import the server action and type
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator'; // Import Separator
 

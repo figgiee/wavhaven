@@ -2,7 +2,7 @@
 
 import React, { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
-import { renameTracksSequentially } from '@/server-actions/trackActions'; // Import the new action
+// import { renameTracksSequentially } from '@/server-actions/trackActions'; // Function not implemented yet
 import { toast } from 'sonner';
 import { CaseSensitive } from 'lucide-react'; // Using a different icon
 
@@ -20,7 +20,8 @@ export default function RenameClassTracksButton() {
     startTransition(async () => {
       const toastId = toast.loading('Renaming \"class\" tracks...');
       try {
-        const result = await renameTracksSequentially('class'); // Hardcode "class" as the base title
+        // const result = await renameTracksSequentially('class'); // Function not implemented yet
+        const result = { success: false, error: 'Function not implemented yet', renamedCount: 0 };
         if (result.success) {
           if (result.renamedCount > 0) {
             toast.success('Tracks Renamed!', { 

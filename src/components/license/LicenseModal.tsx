@@ -15,14 +15,14 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { fetchLicensesForTrack } from '@/server-actions/trackActions';
-import type { License } from './license.types'; // Import shared type
+import { fetchLicensesForTrack } from '@/server-actions/tracks/trackQueries';
+import type { License } from '@/types'; // Import shared type
 import { LicenseOptionCard } from './LicenseOptionCard'; 
 import { UsageTerms } from './UsageTerms';
 // import { LicenseModalFooter } from './LicenseModalFooter';
 
 interface LicenseModalProps {
-    trackId: string | number; // Accept string or number based on BeatCard
+    trackId: string | number; // Accept string or number based on TrackCard
     trackTitle: string;
     trackArtist: string; // Added artist name
     trackImageUrl?: string; // Added optional image URL

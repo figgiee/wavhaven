@@ -3,7 +3,7 @@
 // Remove direct auth import, use clerkClient and verifyToken
 // import { auth } from '@clerk/nextjs/server'; 
 import { clerkClient, verifyToken } from '@clerk/nextjs/server'; // Use server imports
-import prisma from "@/lib/prisma";
+import prisma from "@/lib/db/prisma";
 import { getInternalUserId } from '@/lib/userUtils';
 import type { TrackFile } from '@prisma/client';
 import { createSignedUrl } from '@/lib/storage'; // <-- Import createSignedUrl

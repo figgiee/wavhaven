@@ -3,9 +3,9 @@
 import { redirect } from 'next/navigation';
 import { currentUser } from '@clerk/nextjs/server';
 import Stripe from 'stripe';
-import { stripe as stripeClient } from '@/lib/stripe';
+import { stripe as stripeClient } from '@/lib/payments/stripe';
 import { getInternalUserId } from '@/lib/userUtils';
-import prisma from '@/lib/prisma';
+import prisma from '@/lib/db/prisma';
 
 // Access environment variable directly
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;

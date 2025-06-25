@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import prisma from '@/lib/prisma'; // Correct import
+import prisma from '@/lib/db/prisma'; // Correct import
 import type { Beat } from '@/types'; // Import the Beat type
 import { supabase } from '@/lib/supabase/client'; // Adjust path if needed
 
@@ -214,7 +214,7 @@ export async function searchTracks(
         key: track.key,
         // Use the generated public URL for audio source
         previewAudioUrl: previewAudioUrl, 
-        audioSrc: previewAudioUrl, // Use preview URL for the main audio source in BeatCard
+        audioSrc: previewAudioUrl, // Use preview URL for the main audio source in TrackCard
         beatUrl: `/track/${track.slug}`,
         licenses: track.licenses.map(l => ({ price: l.price?.toNumber() ?? 0 })), 
         price: track.licenses[0]?.price?.toNumber() ?? null, 
