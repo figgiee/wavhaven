@@ -229,11 +229,9 @@ Wavhaven is developed in the open and we are grateful for any contributions from
 
 By contributing to Wavhaven, you agree that your contributions will be licensed under its GNU AGPLv3 License. This is a "copyleft" license that ensures the project remains free and open-source.
 
-We look forward to your contributions!
-
 ## License
 
-Copyright (C) 2024 Figgie
+Copyright (C) 2025 Brandon Figarella
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
