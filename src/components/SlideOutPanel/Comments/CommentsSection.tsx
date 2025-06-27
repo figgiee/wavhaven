@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useTransition, useRef } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -46,7 +46,7 @@ const ReplyForm: React.FC<ReplyFormProps> = ({ beatId, parentId, onReplySuccess,
         if (!replyText.trim()) return;
 
         startReplyTransition(async () => {
-            const result = await addComment({ trackId: beatId, text: replyText.trim(), parentId });
+            const result = await addComment({ trackId: beatId, content: replyText.trim(), parentId });
             if (result.success && result.comment) {
                 toast.success('Reply posted!');
                 onReplySuccess(result.comment); // Pass the new reply back up
@@ -90,6 +90,75 @@ const ReplyForm: React.FC<ReplyFormProps> = ({ beatId, parentId, onReplySuccess,
     );
 };
 
+// Recursive Component for rendering comments and their replies
+const CommentList: React.FC<{ comments: CommentWithDetails[]; onReplyClick: (id: string) => void; replyingTo: string | null; beatId: string; onReplySuccess: (reply: CommentWithDetails) => void }> = ({ comments, onReplyClick, replyingTo, beatId, onReplySuccess }) => {
+    // Helper to get initials from name - can be moved outside if it's a pure function used elsewhere
+    const getInitials = (name?: string | null): string => {
+        if (!name) return '?';
+        const nameParts = name.trim().split(/\s+/);
+        return nameParts.map(n => n[0]).slice(0, 2).join('').toUpperCase();
+    };
+
+    return (
+        <ul className="divide-y divide-border/30">
+            {comments.map((comment) => (
+                <li key={comment.id} className="py-3 first:pt-0 last:pb-0">
+                    <div className="flex space-x-3">
+                        <Avatar className="h-9 w-9 border border-[hsl(var(--border))]/40 flex-shrink-0">
+                            <AvatarImage src={(comment.user as any).imageUrl ?? undefined} alt={comment.user.username ?? comment.user.name ?? 'User'} />
+                            <AvatarFallback className="text-xs">{getInitials(comment.user.name ?? comment.user.username)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 space-y-1">
+                            <div className="flex items-center justify-between">
+                                <p className="text-xs font-medium leading-none text-foreground">
+                                    {comment.user.name ?? comment.user.username ?? 'Anonymous'}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                    {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+                                </p>
+                            </div>
+                            <p className="text-xs text-foreground/80 whitespace-pre-wrap break-words">
+                                {comment.content}
+                            </p>
+                            <div className="flex items-center pt-1 space-x-3">
+                                <Button 
+                                    variant="ghost" 
+                                    size="xs" 
+                                    className="text-muted-foreground hover:text-primary p-0 h-auto"
+                                    onClick={() => onReplyClick(comment.id)}
+                                    disabled={replyingTo === comment.id}
+                                >
+                                    <CornerDownRight className="w-3 h-3 mr-1"/>
+                                    Reply
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                    {replyingTo === comment.id && (
+                        <ReplyForm
+                            beatId={beatId}
+                            parentId={comment.id}
+                            onReplySuccess={onReplySuccess}
+                            onCancel={() => onReplyClick('')} // Pass an empty string or null to cancel
+                        />
+                    )}
+                    {comment.replies && comment.replies.length > 0 && (
+                        <div className="pl-8 mt-2 border-l-2 border-border/20">
+                            <CommentList 
+                                comments={comment.replies} 
+                                onReplyClick={onReplyClick} 
+                                replyingTo={replyingTo}
+                                beatId={beatId}
+                                onReplySuccess={onReplySuccess}
+                            />
+                        </div>
+                    )}
+                </li>
+            ))}
+        </ul>
+    );
+};
+
 const MAX_COMMENTS_INITIAL = 5;
 
 export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
@@ -100,6 +169,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, startTransition] = useTransition();
     const [replyingTo, setReplyingTo] = useState<string | null>(null); // ID of comment being replied to
+    const formRef = useRef<HTMLFormElement>(null);
 
     useEffect(() => {
         if (!beatId) return;
@@ -109,7 +179,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
             setError(null);
             // Fetch comments using the updated action/type
             const result = await getCommentsForTrack(beatId);
-            if (result.success && result.comments) {
+            if (result.success && result.comments !== undefined) {
                 setComments(result.comments);
             } else {
                 setError(result.error ?? 'Failed to load comments.');
@@ -128,7 +198,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
 
         startTransition(async () => {
             // Call addComment without parentId for top-level comments
-            const result = await addComment({ trackId: beatId, text: newComment.trim() });
+            const result = await addComment({ trackId: beatId, content: newComment.trim() });
 
             if (result.success && result.comment) {
                 setComments(prev => [result.comment!, ...prev]);
@@ -141,39 +211,55 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
         });
     };
 
-    // Handler called when a reply is successfully submitted via ReplyForm
-    const handleReplySuccess = (newReply: CommentWithDetails) => {
-        setComments(prevComments =>
-            prevComments.map(comment => {
-                // If the current comment is the parent of the new reply
-                if (comment.id === newReply.parentId) {
-                    return {
-                        ...comment,
-                        replies: [...(comment.replies || []), newReply].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
-                    };
-                } else if (comment.replies && comment.replies.some(reply => reply.id === newReply.parentId)) {
-                    // If the new reply is a reply to one of the existing replies (nested reply)
-                    return {
-                        ...comment,
-                        replies: comment.replies.map(reply =>
-                            reply.id === newReply.parentId
-                                ? { ...reply, replies: [...(reply.replies || []), newReply].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) }
-                                : reply
-                        ),
-                    };
-                }
-                return comment;
-            })
-        );
-        setReplyingTo(null);
+    const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault(); // Prevent new line
+            if (!isSubmitting && newComment.trim()) {
+                formRef.current?.requestSubmit();
+            }
+        }
     };
 
-    // Helper to get initials from name
-    const getInitials = (name?: string | null): string => {
-        if (!name) return '?';
-        // Handle potential multiple spaces
-        const nameParts = name.trim().split(/\s+/);
-        return nameParts.map(n => n[0]).slice(0, 2).join('').toUpperCase();
+    // Handler called when a reply is successfully submitted via ReplyForm
+    const handleReplySuccess = (newReply: CommentWithDetails) => {
+        // Add the new reply to the flat list of comments
+        setComments(prevComments => [...prevComments, newReply]);
+        setReplyingTo(null); // Close the reply form
+    };
+
+    // Helper to build a nested tree from a flat list of comments
+    const buildCommentTree = (list: CommentWithDetails[]): CommentWithDetails[] => {
+        const map: { [key: string]: CommentWithDetails } = {};
+        const roots: CommentWithDetails[] = [];
+
+        // First pass: create a map of all comments by their ID
+        list.forEach(comment => {
+            map[comment.id] = { ...comment, replies: [] };
+        });
+
+        // Second pass: build the tree structure
+        list.forEach(comment => {
+            if (comment.parentId && map[comment.parentId]) {
+                // This is a reply, push it into its parent's replies array
+                map[comment.parentId].replies?.push(map[comment.id]);
+            } else {
+                // This is a top-level comment
+                roots.push(map[comment.id]);
+            }
+        });
+
+        // Sort roots and all replies by creation date
+        const sortByDate = (a: CommentWithDetails, b: CommentWithDetails) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        
+        roots.sort(sortByDate);
+        Object.values(map).forEach(comment => {
+            if (comment.replies) {
+                comment.replies.sort(sortByDate);
+            }
+        });
+
+
+        return roots;
     };
 
     return (
@@ -196,68 +282,25 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ beatId }) => {
                     ) : comments.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-4">No comments yet. Be the first!</p>
                     ) : (
-                        <ul className="divide-y divide-border/30">
-                            {comments.map((comment) => (
-                                <li key={comment.id} className="py-3 first:pt-0 last:pb-0">
-                                    <div className="flex space-x-3">
-                                        <Avatar className="h-9 w-9 border border-[hsl(var(--border))]/40 flex-shrink-0">
-                                            <AvatarImage src={(comment.user as any).imageUrl ?? undefined} alt={comment.user.username ?? comment.user.name ?? 'User'} />
-                                            <AvatarFallback className="text-xs">{getInitials(comment.user.name ?? comment.user.username)}</AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex-1 space-y-1">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-xs font-medium leading-none text-foreground">
-                                                    {comment.user.name ?? comment.user.username ?? 'Anonymous'}
-                                                </p>
-                                                <p className="text-[11px] text-muted-foreground">
-                                                    {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
-                                                </p>
-                                            </div>
-                                            <p className="text-xs text-foreground/80 whitespace-pre-wrap break-words">
-                                                {comment.text}
-                                            </p>
-                                            {/* Like/Reply/Delete Actions */} 
-                                            <div className="flex items-center pt-1 space-x-3">
-                                                {/* TODO: Add Like Button Here */} 
-                                                {isSignedIn && (
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="xs" 
-                                                        className="text-muted-foreground hover:text-primary p-0 h-auto"
-                                                        onClick={() => setReplyingTo(comment.id)}
-                                                        disabled={replyingTo === comment.id} // Disable if already replying
-                                                    >
-                                                        <CornerDownRight className="w-3 h-3 mr-1"/>
-                                                        Reply
-                                                    </Button>
-                                                )}
-                                                {/* TODO: Add Delete Button Here */} 
-                                            </div>
-                                        </div>
-                                    </div>
-                                     {/* Reply Form - Conditionally Rendered */} 
-                                     {replyingTo === comment.id && (
-                                        <ReplyForm
-                                            beatId={beatId}
-                                            parentId={comment.id}
-                                            onReplySuccess={handleReplySuccess}
-                                            onCancel={() => setReplyingTo(null)} // Add cancel handler
-                                        />
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
+                        <CommentList 
+                            comments={buildCommentTree(comments)} 
+                            onReplyClick={setReplyingTo}
+                            replyingTo={replyingTo}
+                            beatId={beatId}
+                            onReplySuccess={handleReplySuccess}
+                        />
                     )}
                 </div>
             </CardContent>
             {/* Footer with Top-Level Comment Form */}
             <CardFooter className="border-t border-[hsl(var(--border))]/50 p-4">
                 {isSignedIn ? (
-                    <form onSubmit={handleAddComment} className="w-full space-y-2">
+                    <form ref={formRef} onSubmit={handleAddComment} className="w-full space-y-2">
                         <Textarea
                             placeholder="Write a comment..."
                             value={newComment}
                             onChange={(e) => setNewComment(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             rows={2}
                             className="text-xs bg-background/60 focus:bg-background/80 resize-none"
                             maxLength={1000}

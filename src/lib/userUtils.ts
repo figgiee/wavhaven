@@ -1,9 +1,12 @@
 import { supabaseAdmin } from './supabase/admin'; // Import the admin client
+import clerkClient from '@clerk/nextjs/server';
+import prisma from './db/prisma';
 
 export async function getInternalUserId(clerkId: string | null | undefined): Promise<string | null> {
-  // console.log("--- Inside getInternalUserId (Supabase Client) ---");
+  console.log(`[userUtils] getInternalUserId called with clerkId: ${clerkId}`);
+
   if (!clerkId) {
-    console.warn("[getInternalUserId] Called with null or undefined clerkId");
+    console.warn("[userUtils] Aborting: clerkId is null or undefined.");
     return null;
   }
 
@@ -17,31 +20,42 @@ export async function getInternalUserId(clerkId: string | null | undefined): Pro
   // -------------------------------------
 
   try {
-    // console.log(`[getInternalUserId] supabaseAdmin object exists: ${!!supabaseAdmin}`);
-    const { data: user, error } = await supabaseAdmin
-      .from("User")
-      .select("id")
-      .eq("clerkId", clerkId)
-      .single();
-
-    if (error) {
-      // Keep this error log as it indicates a potentially serious issue
-      console.error(`[getInternalUserId] Supabase Error fetching user for clerkId ${clerkId}:`, error);
-      return null;
-    }
+    const user = await prisma.user.findUnique({
+      where: { clerkId: clerkId },
+      select: { id: true },
+    });
 
     if (user) {
-      // console.log(`[getInternalUserId] Found user ID: ${user.id} for clerkId: ${clerkId}`);
-      // console.log("--- Exiting getInternalUserId (Supabase Client) ---"); // Moved exit log here
+      console.log(`[userUtils] Found user with ID: ${user.id}`);
       return user.id;
     } else {
-      // console.warn(`[getInternalUserId] Internal user ID not found in DB for clerkId: ${clerkId}`);
-      // console.log("--- Exiting getInternalUserId (Supabase Client) ---"); // Moved exit log here
+      console.warn(`[userUtils] No user found with clerkId: ${clerkId}`);
       return null;
     }
-  } catch (error) {
-    console.error(`[getInternalUserId] Unexpected Error for clerkId ${clerkId}:`, error);
+  } catch (e) {
+    console.error(`[userUtils] An unexpected error occurred in getInternalUserId:`, e instanceof Error ? e.message : String(e));
     // console.log("--- Exiting getInternalUserId (Supabase Client) ---"); // Moved exit log here
     return null;
   }
+}
+
+/**
+ * Checks if one user is following another.
+ * @param followerId The ID of the user who might be following.
+ * @param followingId The ID of the user who might be followed.
+ * @returns A boolean indicating the follow status.
+ */
+export async function isFollowingUser(followerId: string, followingId: string): Promise<boolean> {
+    if (followerId === followingId) return false; // Can't follow yourself
+
+    const follow = await prisma.follows.findUnique({
+        where: {
+            followerId_followingId: {
+                followerId,
+                followingId,
+            },
+        },
+    });
+
+    return !!follow;
 }

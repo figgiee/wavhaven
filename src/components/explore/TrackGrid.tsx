@@ -16,8 +16,8 @@ interface TrackGridProps {
 }
 
 export function TrackGrid({ tracks, isLoading, layoutMode = 'grid', cardVariant = 'default' }: TrackGridProps) {
-  const gridClasses = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-6 md:gap-8";
-  const listClasses = "space-y-4 md:space-y-5"; // Slightly increased gap for list items
+  const gridClasses = "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4";
+  const listClasses = "space-y-3"; // List items spacing
 
   return (
     <div 

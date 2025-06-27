@@ -11,6 +11,11 @@ interface UIState {
   isSearchModalOpen: boolean;
   openSearchModal: () => void;
   closeSearchModal: () => void;
+
+  // Filter Panel state and actions
+  isFilterPanelOpen: boolean;
+  openFilterPanel: () => void;
+  closeFilterPanel: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -32,4 +37,9 @@ export const useUIStore = create<UIState>((set) => ({
   isSearchModalOpen: false,
   openSearchModal: () => set({ isSearchModalOpen: true }),
   closeSearchModal: () => set({ isSearchModalOpen: false }),
+
+  // Filter Panel state and implementation
+  isFilterPanelOpen: false,
+  openFilterPanel: () => set({ isFilterPanelOpen: true }),
+  closeFilterPanel: () => set({ isFilterPanelOpen: false }),
 })); 

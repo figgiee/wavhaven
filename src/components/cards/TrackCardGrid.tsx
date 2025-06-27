@@ -33,13 +33,14 @@ export const TrackCardGrid: React.FC<TrackCardGridProps> = ({
     isOptimisticallyInCart,
     isCurrentTrackPlaying,
     isThisTrackLoading,
+    isLikePending,
     cheapestLicense,
     producerProfileUrl,
     handlePlayPauseClick,
     handleLikeClick,
     handleAddToCartFromCard,
     handleCardClick,
-  } = useTrackCardActions({ beat, fullTrackList, index });
+  } = useTrackCardActions({ beat, fullTrackList, index, isInitiallyLiked: beat.isLiked ?? false });
 
   const imageToDisplay = beat.imageUrl || beat.coverImageUrl;
 
@@ -142,7 +143,11 @@ export const TrackCardGrid: React.FC<TrackCardGridProps> = ({
               "text-neutral-400 hover:text-pink-500 hover:bg-pink-500/10 focus-visible:ring-pink-500 rounded-full w-7 h-7 sm:w-8 sm:h-8",
               isFavorited && "text-pink-500"
             )}
-            onClick={handleLikeClick}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleLikeClick(e);
+            }}
+            disabled={isLikePending}
             aria-label={isFavorited ? `Unlike ${beat.title}` : `Like ${beat.title}`}
           >
             <Heart size={14} fill={isFavorited ? 'currentColor' : 'none'} />

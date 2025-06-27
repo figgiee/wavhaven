@@ -1,0 +1,5 @@
+# It's recommended to pin versions for production use
+# Check for the latest compatible versions before deploying
+torch
+transformers
+librosa 

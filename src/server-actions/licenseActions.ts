@@ -15,7 +15,34 @@ const LicenseSchema = z.object({
   description: z.string().optional(),
 });
 
+const DeleteLicenseSchema = z.object({
+  licenseId: z.string().uuid('Invalid License ID'),
+});
+
 type LicenseInput = z.infer<typeof LicenseSchema>;
+
+// --- Helper Function ---
+
+/**
+ * Recalculates and updates the minPrice on a track based on its current licenses.
+ * @param trackId The ID of the track to update.
+ */
+async function updateTrackMinPrice(trackId: string) {
+  const licenses = await prisma.license.findMany({
+    where: { trackId: trackId },
+    select: { price: true },
+  });
+
+  let minPrice: number | null = null;
+  if (licenses.length > 0) {
+    minPrice = Math.min(...licenses.map(l => l.price));
+  }
+  
+  await prisma.track.update({
+    where: { id: trackId },
+    data: { minPrice },
+  });
+}
 
 // --- Server Action ---
 
@@ -85,10 +112,64 @@ export async function createOrUpdateLicense(input: LicenseInput): Promise<Licens
       create: licenseData, 
     });
 
+    // After upsert, update the track's minPrice
+    await updateTrackMinPrice(trackId);
+
     return { success: true, licenseId: license.id };
 
   } catch (error) {
     console.error("Error creating/updating license:", error);
     return { success: false, error: 'Failed to save license data.' };
   }
+}
+
+export async function deleteLicense(input: { licenseId: string }): Promise<Omit<LicenseActionResult, 'licenseId'>> {
+    const { userId: clerkId } = await auth();
+    if (!clerkId) {
+        return { success: false, error: 'User not authenticated.' };
+    }
+
+    const validationResult = DeleteLicenseSchema.safeParse(input);
+    if (!validationResult.success) {
+        return { success: false, error: validationResult.error.errors.map(e => e.message).join(', ') };
+    }
+    const { licenseId } = validationResult.data;
+
+    try {
+        const userWithProfile = await prisma.user.findUnique({
+            where: { clerkId: clerkId },
+            select: { id: true, sellerProfile: { select: { id: true } } }
+        });
+
+        if (!userWithProfile?.sellerProfile) {
+            return { success: false, error: 'User is not a verified producer.' };
+        }
+        const internalUserId = userWithProfile.id;
+
+        const license = await prisma.license.findUnique({
+            where: { id: licenseId },
+            select: { track: { select: { producerId: true, id: true } } }
+        });
+
+        if (!license) {
+            return { success: false, error: 'License not found.' };
+        }
+
+        if (license.track.producerId !== internalUserId) {
+            return { success: false, error: 'User does not own this license.' };
+        }
+
+        await prisma.license.delete({
+            where: { id: licenseId },
+        });
+
+        // After deleting, update the track's minPrice
+        await updateTrackMinPrice(license.track.id);
+
+        return { success: true };
+
+    } catch (error) {
+        console.error("Error deleting license:", error);
+        return { success: false, error: 'Failed to delete license.' };
+    }
 } 

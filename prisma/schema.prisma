@@ -8,282 +8,27 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-model User {
-  id                  String                   @id @default(cuid())
-  clerkId             String                   @unique
-  email               String                   @unique
-  firstName           String?
-  lastName            String?
-  username            String?                  @unique
-  profileImageUrl     String?
-  role                UserRole                 @default(CUSTOMER)
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
-  comments            Comment[]                @relation("UserComments")
-  commentLikes        CommentLike[]            @relation("UserCommentLikes")
-  orders              Order[]                  @relation("UserOrders")
-  sellerProfile       SellerProfile?           @relation("UserSellerProfile")
-  tracks              Track[]                  @relation("ProducerTracks")
-  trackLikes          TrackLike[]              @relation("UserTrackLikes")
-  downloadPermissions UserDownloadPermission[]
-}
-
-model SellerProfile {
-  id                    String     @id @default(uuid())
-  userId                String     @unique
-  bio                   String?
-  websiteUrl            String?    @db.VarChar(2500)
-  twitterHandle         String?
-  instagramHandle       String?
-  soundCloudUrl         String?    @db.VarChar(2500)
-  bannerImageUrl        String?    @db.VarChar(2048)
-  tier                  SellerTier @default(STANDARD)
-  isVerified            Boolean    @default(false)
-  stripeAccountId       String?    @unique
-  stripeAccountVerified Boolean    @default(false)
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  instagramUrl          String?    @db.VarChar(2500)
-  tiktokUrl             String?    @db.VarChar(2500)
-  twitterUrl            String?    @db.VarChar(2500)
-  youtubeUrl            String?    @db.VarChar(2500)
-  user                  User       @relation("UserSellerProfile", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([stripeAccountId])
-}
-
-model Track {
-  id                  String                   @id @default(cuid())
-  title               String
-  slug                String                   @unique
-  description         String?
-  producerId          String
-  bpm                 Int?
-  key                 String?
-  isPublished         Boolean                  @default(false)
-  isApproved          Boolean?
-  salesCount          Int                      @default(0)
-  likeCount           Int                      @default(0)
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
-  publishedAt         DateTime?
-  coverImageFileId    String?                  @unique
-  previewAudioFileId  String?                  @unique
-  stemsFileId         String?                  @unique
-  playCount           Int                      @default(0)
-  comments            Comment[]                @relation("TrackComments")
-  licenses            License[]                @relation("TrackLicenses")
-  orderItems          OrderItem[]              @relation("TrackOrderItems")
-  coverImage          TrackFile?               @relation("CoverImage", fields: [coverImageFileId], references: [id])
-  previewAudio        TrackFile?               @relation("PreviewAudio", fields: [previewAudioFileId], references: [id])
-  producer            User                     @relation("ProducerTracks", fields: [producerId], references: [id])
-  stemsFile           TrackFile?               @relation("StemsFile", fields: [stemsFileId], references: [id])
-  trackFiles          TrackFile[]              @relation("TrackFiles")
-  likes               TrackLike[]              @relation("TrackLikes")
-  downloadPermissions UserDownloadPermission[]
-  genres              Genre[]                  @relation("TrackGenres")
-  moods               Mood[]                   @relation("TrackMoods")
-  tags                Tag[]                    @relation("TrackTags")
-
-  @@index([producerId])
-  @@index([slug])
-  @@index([createdAt])
-}
-
-model TrackFile {
-  id              String        @id @default(uuid())
-  trackId         String
-  fileType        TrackFileType
-  storagePath     String
-  fileSize        Int?
-  createdAt       DateTime      @default(now())
-  coverForTrack   Track?        @relation("CoverImage")
-  previewForTrack Track?        @relation("PreviewAudio")
-  stemsForTrack   Track?        @relation("StemsFile")
-  track           Track         @relation("TrackFiles", fields: [trackId], references: [id], onDelete: Cascade)
-
-  @@index([trackId])
-}
-
-model License {
-  id                String          @id @default(uuid())
-  trackId           String
-  type              LicenseType
-  name              String
-  price             Decimal
-  description       String?
-  filesIncluded     TrackFileType[] @default([])
-  streamLimit       Int?
-  distributionLimit Int?
-  radioStations     Int?
-  musicVideos       Int?
-  contractText      String?
-  isAvailable       Boolean         @default(true)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  track             Track           @relation("TrackLicenses", fields: [trackId], references: [id], onDelete: Cascade)
-  orderItems        OrderItem[]     @relation("LicenseOrderItems")
-
-  @@unique([trackId, type])
-  @@index([trackId])
-  @@index([type])
-}
-
-model Order {
-  id                      String                   @id @default(uuid())
-  customerId              String
-  totalAmount             Decimal
-  stripeCheckoutSessionId String?                  @unique
-  stripePaymentIntentId   String?
-  status                  OrderStatus              @default(PENDING)
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  customer                User                     @relation("UserOrders", fields: [customerId], references: [id])
-  items                   OrderItem[]              @relation("OrderItems")
-  downloadPermissions     UserDownloadPermission[]
-
-  @@index([customerId])
-  @@index([stripeCheckoutSessionId])
-  @@index([stripePaymentIntentId])
-}
-
-model OrderItem {
-  id                  String                   @id @default(uuid())
-  orderId             String
-  trackId             String
-  licenseId           String
-  price               Decimal
-  createdAt           DateTime                 @default(now())
-  license             License                  @relation("LicenseOrderItems", fields: [licenseId], references: [id])
-  order               Order                    @relation("OrderItems", fields: [orderId], references: [id], onDelete: Cascade)
-  track               Track                    @relation("TrackOrderItems", fields: [trackId], references: [id])
-  downloadPermissions UserDownloadPermission[]
-
-  @@index([orderId])
-  @@index([trackId])
-  @@index([licenseId])
-}
-
-model StripeEvent {
-  id               String   @id
-  api_version      String?
-  data             Json
-  request          Json?
-  type             String
-  object           String
-  account          String?
-  created          DateTime
-  livemode         Boolean
-  pending_webhooks Int
-
-  @@index([type])
-}
-
-model Genre {
-  id     String  @id @default(uuid())
-  name   String  @unique
-  tracks Track[] @relation("TrackGenres")
-}
-
-model Mood {
-  id     String  @id @default(uuid())
-  name   String  @unique
-  tracks Track[] @relation("TrackMoods")
-}
-
-model Comment {
-  id        String        @id @default(cuid())
-  text      String
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  trackId   String
-  userId    String
-  parentId  String?
-  parent    Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies   Comment[]     @relation("CommentReplies")
-  track     Track         @relation("TrackComments", fields: [trackId], references: [id], onDelete: Cascade)
-  user      User          @relation("UserComments", fields: [userId], references: [id], onDelete: Cascade)
-  likes     CommentLike[] @relation("CommentLikes")
-
-  @@index([trackId, createdAt(sort: Desc)])
-  @@index([userId])
-  @@index([parentId])
-}
-
-model CommentLike {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  userId    String
-  commentId String
-  comment   Comment  @relation("CommentLikes", fields: [commentId], references: [id], onDelete: Cascade)
-  user      User     @relation("UserCommentLikes", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, commentId])
-  @@index([userId])
-  @@index([commentId])
-}
-
-model UserDownloadPermission {
-  id          String     @id @default(uuid())
-  userId      String
-  trackId     String
-  orderId     String?
-  orderItemId String?
-  expiresAt   DateTime?
-  createdAt   DateTime   @default(now())
-  order       Order?     @relation(fields: [orderId], references: [id])
-  orderItem   OrderItem? @relation(fields: [orderItemId], references: [id])
-  track       Track      @relation(fields: [trackId], references: [id], onDelete: Cascade)
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, trackId])
-  @@index([userId])
-  @@index([trackId])
-  @@index([orderItemId])
-}
-
-model Tag {
-  id     String  @id @default(cuid())
-  name   String  @unique
-  tracks Track[] @relation("TrackTags")
-
-  @@index([name])
-}
-
-model TrackLike {
-  id        String   @id @default(uuid())
-  userId    String
-  trackId   String
-  createdAt DateTime @default(now())
-  track     Track    @relation("TrackLikes", fields: [trackId], references: [id], onDelete: Cascade)
-  user      User     @relation("UserTrackLikes", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, trackId])
-  @@index([trackId])
-}
+// --- ENUMS ---
 
 enum UserRole {
-  ADMIN
-  PRODUCER
   CUSTOMER
-  GUEST
+  PRODUCER
+  ADMIN
 }
 
 enum TrackFileType {
+  IMAGE_PNG
+  IMAGE_JPEG
+  IMAGE_WEBP
   PREVIEW_MP3
   MAIN_MP3
   MAIN_WAV
-  STEMS_ZIP
-  IMAGE_JPEG
-  IMAGE_PNG
-  IMAGE_WEBP
+  STEMS
 }
 
 enum LicenseType {
   BASIC
   PREMIUM
-  UNLIMITED
   EXCLUSIVE
 }
 
@@ -305,4 +50,313 @@ enum OrderStatus {
   COMPLETED
   FAILED
   REFUNDED
+}
+
+// --- MODELS ---
+
+model User {
+  id              String   @id @default(uuid())
+  clerkId         String   @unique
+  email           String?  @unique
+  username        String?  @unique
+  firstName       String?
+  lastName        String?
+  profileImageUrl String?
+  role            UserRole @default(CUSTOMER)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sellerProfile       SellerProfile?
+  tracks              Track[]
+  orders              Order[]
+  likes               Like[]
+  comments            Comment[]
+  downloadPermissions UserDownloadPermission[]
+
+  // Social
+  following       Follows[]         @relation("Following")
+  followers       Follows[]         @relation("Followers")
+  playlists       Playlist[]
+  ModerationQueue ModerationQueue[]
+}
+
+model SellerProfile {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  bio                String?  @db.Text
+  websiteUrl         String?
+  twitterUrl         String?
+  instagramUrl       String?
+  youtubeUrl         String?
+  soundCloudUrl      String?
+  bannerImageUrl     String?
+  isVerified         Boolean  @default(false)
+  stripeAccountId    String?  @unique
+  stripeAccountReady Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Track {
+  id          String   @id @default(uuid())
+  title       String
+  description String?  @db.Text
+  slug        String   @unique
+  bpm         Int?
+  key         String?
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  producerId String
+  producer   User   @relation(fields: [producerId], references: [id], onDelete: Cascade)
+
+  contentType String?
+
+  // Denormalized counts
+  likeCount    Int      @default(0)
+  commentCount Int      @default(0)
+  playCount    Int      @default(0)
+  minPrice     Decimal? @db.Decimal(10, 2)
+
+  licenses            License[]
+  trackFiles          TrackFile[]
+  genres              Genre[]                  @relation("TrackGenres")
+  moods               Mood[]                   @relation("TrackMoods")
+  tags                Tag[]                    @relation("TrackTags")
+  orderItems          OrderItem[]
+  likes               Like[]
+  comments            Comment[]
+  downloadPermissions UserDownloadPermission[]
+  playlists           PlaylistTrack[]
+  moderationReports   ModerationQueue[]
+  TrackEmbedding      TrackEmbedding?
+
+  @@index([producerId])
+  @@index([title])
+  @@index([minPrice])
+}
+
+model TrackFile {
+  id          String        @id @default(uuid())
+  trackId     String
+  fileType    TrackFileType
+  storagePath String
+  fileSize    Int?
+  createdAt   DateTime      @default(now())
+
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([trackId])
+}
+
+model License {
+  id                String          @id @default(uuid())
+  trackId           String
+  type              LicenseType
+  name              String
+  price             Decimal
+  description       String?
+  filesIncluded     TrackFileType[] @default([])
+  streamLimit       Int?
+  distributionLimit Int?
+  radioStations     Int?
+  musicVideos       Int?
+  contractText      String?         @db.Text
+  isAvailable       Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  track      Track       @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@unique([trackId, type])
+  @@index([trackId])
+}
+
+model Order {
+  id                      String      @id @default(uuid())
+  customerId              String
+  totalAmount             Decimal
+  stripeCheckoutSessionId String?     @unique
+  stripePaymentIntentId   String?
+  status                  OrderStatus @default(PENDING)
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+
+  customer            User                     @relation(fields: [customerId], references: [id])
+  items               OrderItem[]
+  downloadPermissions UserDownloadPermission[]
+
+  @@index([customerId])
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  trackId   String
+  licenseId String
+  price     Decimal
+  createdAt DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  track   Track   @relation(fields: [trackId], references: [id])
+  license License @relation(fields: [licenseId], references: [id])
+
+  downloadPermissions UserDownloadPermission[]
+}
+
+model UserDownloadPermission {
+  id          String    @id @default(uuid())
+  userId      String
+  trackId     String
+  orderId     String?
+  orderItemId String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track     Track      @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  order     Order?     @relation(fields: [orderId], references: [id])
+  orderItem OrderItem? @relation(fields: [orderItemId], references: [id])
+
+  @@unique([userId, trackId])
+}
+
+// --- INTERACTION & SOCIAL ---
+
+model Like {
+  id        String   @id @default(uuid())
+  userId    String
+  trackId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId])
+  @@index([trackId])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trackId  String
+  userId   String
+  parentId String?
+
+  track   Track     @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: NoAction)
+  replies Comment[] @relation("CommentReplies")
+
+  @@index([trackId, createdAt(sort: Desc)])
+}
+
+model Follows {
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+}
+
+model Playlist {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  isPublic    Boolean  @default(false)
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks PlaylistTrack[]
+
+  @@index([userId])
+}
+
+model PlaylistTrack {
+  playlistId String
+  trackId    String
+  order      Int
+  addedAt    DateTime @default(now())
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track    Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@id([playlistId, trackId])
+}
+
+// --- MODERATION & ADMIN ---
+
+model ModerationQueue {
+  id         String   @id @default(uuid())
+  trackId    String
+  reporterId String
+  reason     String   @db.Text
+  isResolved Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  track    Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  reporter User  @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([trackId])
+  @@index([reporterId])
+  @@index([isResolved])
+}
+
+model TrackEmbedding {
+  id        String                     @id @default(uuid())
+  trackId   String                     @unique
+  embedding Unsupported("vector(768)")
+  createdAt DateTime                   @default(now())
+
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+}
+
+// --- TAXONOMY ---
+
+model Genre {
+  id     String  @id @default(uuid())
+  name   String  @unique
+  tracks Track[] @relation("TrackGenres")
+}
+
+model Mood {
+  id     String  @id @default(uuid())
+  name   String  @unique
+  tracks Track[] @relation("TrackMoods")
+}
+
+model Tag {
+  id     String  @id @default(uuid())
+  name   String  @unique
+  tracks Track[] @relation("TrackTags")
+}
+
+// --- MISC ---
+
+model StripeEvent {
+  id               String   @id
+  api_version      String?
+  data             Json
+  request          Json?
+  type             String
+  object           String
+  account          String?
+  created          DateTime
+  livemode         Boolean
+  pending_webhooks Int
+
+  @@index([type])
 }

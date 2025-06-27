@@ -7,16 +7,20 @@ import { useCartStore, CartItem } from '@/stores/useCartStore';
 import { useUIStore } from '@/stores/use-ui-store';
 import { usePostHog } from 'posthog-js/react';
 import type { Beat, PlayerTrack } from '@/types';
+import { toggleLike } from '@/server-actions/interactionActions';
+import { useTransition } from 'react';
 
 interface UseTrackCardActionsProps {
   beat: Beat;
+  isInitiallyLiked: boolean;
   fullTrackList: Beat[];
   index: number;
 }
 
-export const useTrackCardActions = ({ beat, fullTrackList, index }: UseTrackCardActionsProps) => {
-  const [isFavorited, setIsFavorited] = useState(false); // Placeholder state
+export const useTrackCardActions = ({ beat, isInitiallyLiked, fullTrackList, index }: UseTrackCardActionsProps) => {
+  const [isFavorited, setIsFavorited] = useState(isInitiallyLiked);
   const [isOptimisticallyInCart, setIsOptimisticallyInCart] = useState(false);
+  const [isLikePending, startLikeTransition] = useTransition();
 
   const posthog = usePostHog();
 
@@ -122,12 +126,29 @@ export const useTrackCardActions = ({ beat, fullTrackList, index }: UseTrackCard
 
   const handleLikeClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsFavorited(!isFavorited);
-    toast.info(isFavorited ? 'Removed from favorites' : 'Added to favorites (Feature WIP)');
-    posthog?.capture(isFavorited ? 'track_unliked' : 'track_liked', {
-      trackId: String(beat.id),
-      trackTitle: beat.title,
-      origin: 'track-card'
+    
+    startLikeTransition(async () => {
+        // Optimistic update
+        const previousState = isFavorited;
+        setIsFavorited(!previousState);
+
+        posthog?.capture(previousState ? 'track_unliked' : 'track_liked', {
+            trackId: String(beat.id),
+            trackTitle: beat.title,
+            origin: 'track-card'
+        });
+
+        const result = await toggleLike(String(beat.id));
+
+        if (!result.success) {
+            // Revert on failure
+            setIsFavorited(previousState);
+            toast.error("Failed to update like status", { description: result.error });
+        } else {
+            // Optionally, sync with the definite server state
+            setIsFavorited(result.isLiked ?? previousState);
+            toast.success(result.isLiked ? 'Added to favorites' : 'Removed from favorites');
+        }
     });
   }, [isFavorited, beat.id, beat.title, posthog]);
 
@@ -183,6 +204,7 @@ export const useTrackCardActions = ({ beat, fullTrackList, index }: UseTrackCard
   return {
     // States
     isFavorited,
+    isLikePending,
     isOptimisticallyInCart,
     isCurrentTrackPlaying,
     isThisTrackLoading,

@@ -32,31 +32,71 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
   }
 
+  // --- Handle specific event types ---
+
+  // Handle the account.updated event for Stripe Connect
+  if (event.type === 'account.updated') {
+    const account = event.data.object as Stripe.Account;
+    console.log('Processing account.updated event for Stripe Account ID:', account.id);
+
+    const stripeAccountId = account.id;
+    const isReady = account.details_submitted && account.charges_enabled;
+
+    try {
+      await prisma.sellerProfile.update({
+        where: { stripeAccountId: stripeAccountId },
+        data: { stripeAccountReady: isReady },
+      });
+      console.log(`Successfully updated SellerProfile for ${stripeAccountId}. Ready status: ${isReady}`);
+
+      // Optional: Send PostHog event
+      const sellerProfile = await prisma.sellerProfile.findUnique({
+          where: { stripeAccountId: stripeAccountId },
+          select: { userId: true }
+      });
+      if (posthogServerClient && sellerProfile) {
+          posthogServerClient.capture({
+            distinctId: sellerProfile.userId,
+            event: 'stripe_account_updated',
+            properties: {
+              stripeAccountId: stripeAccountId,
+              stripeAccountReady: isReady,
+              detailsSubmitted: account.details_submitted,
+              chargesEnabled: account.charges_enabled,
+            },
+          });
+      }
+
+    } catch (error) {
+      console.error(`Failed to update SellerProfile for Stripe Account ${stripeAccountId}:`, error);
+      // Return a 500 to indicate to Stripe that it should retry
+      return NextResponse.json({ error: 'Database update failed.' }, { status: 500 });
+    }
+  }
+
   // Handle the checkout.session.completed event
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
 
     console.log('Processing checkout.session.completed event for session:', session.id);
 
-    // --- Extract necessary data ---
-    const internalUserId = session.client_reference_id;
-    const licenseIdsString = session.metadata?.licenseIds;
+    // --- Extract necessary data from METADATA ---
+    const { internalUserId, licenseIds: licenseIdsString } = session.metadata || {};
     const amountTotal = session.amount_total;
-    const customerEmailFromStripe = session.customer_details?.email; // Email provided to Stripe (esp. for guests)
+    const customerEmailFromStripe = session.customer_details?.email; 
 
     if (!internalUserId || !licenseIdsString) {
-      console.error('Missing required data in Stripe session:', { internalUserId, licenseIdsString });
-      return NextResponse.json({ error: 'Missing data in session.' }, { status: 400 });
+      console.error('Webhook Error: Missing internalUserId or licenseIds in session metadata for session:', session.id);
+      return NextResponse.json({ error: 'Missing required metadata in session.' }, { status: 400 });
     }
 
-    let licenseIds: string[];
-    try {
-      licenseIds = JSON.parse(licenseIdsString);
-      if (!Array.isArray(licenseIds) || licenseIds.length === 0) throw new Error('Invalid format');
-    } catch (e) {
-      console.error('Invalid licenseIds format in metadata:', licenseIdsString);
+    const licenseIds = licenseIdsString.split(',');
+    if (!Array.isArray(licenseIds) || licenseIds.length === 0) {
+      console.error('Webhook Error: Invalid licenseIds format in metadata:', licenseIdsString);
       return NextResponse.json({ error: 'Invalid license data in session.' }, { status: 400 });
     }
+    
+    console.log(`[Webhook] Extracted Metadata: internalUserId=${internalUserId}, licenseIds=${licenseIds.join(', ')}`);
 
     try {
       // --- Process Order --- 
@@ -126,7 +166,18 @@ export async function POST(req: Request) {
 
         await tx.orderItem.createMany({ data: orderItemsData });
         
-        console.log(`Order ${newOrder.id} created successfully in transaction (Status: ${orderData.status}).`);
+        // --- >>> 3. Create UserDownloadPermission Records <<< ---
+        const downloadPermissionsData = validLicenses.map(license => ({
+            userId: user.id,
+            trackId: license.trackId,
+            licenseType: license.type, // Store the license type for reference
+            orderId: newOrder.id, // Link back to the order
+        }));
+
+        await tx.userDownloadPermission.createMany({ data: downloadPermissionsData });
+        // --- >>> END <<< ---
+
+        console.log(`Order ${newOrder.id} and permissions created successfully in transaction.`);
         // Return order and valid licenses for fulfillment step
         return { ...newOrder, licenses: validLicenses }; 
       });

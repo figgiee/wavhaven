@@ -23,7 +23,7 @@ export type CommentWithDetails = Comment & {
 // --- Schemas ---
 const addCommentSchema = z.object({
     trackId: z.string(),
-    text: z.string().min(1, "Comment cannot be empty").max(1000, "Comment too long"),
+    content: z.string().min(1, "Comment cannot be empty").max(1000, "Comment too long"),
     parentId: z.string().optional(),
 });
 
@@ -45,22 +45,17 @@ export async function getCommentsForTrack(trackId: string): Promise<{ success: b
         const comments = await prisma.comment.findMany({
             where: {
                 trackId,
-                parentId: null, // Fetch only top-level comments initially
+                // parentId: null, // Fetch all comments, not just top-level
             },
             include: {
                 user: {
-                    select: { id: true, username: true, firstName: true, lastName: true, profileImageUrl: true },
+                    select: { id: true, username: true, firstName: true, lastName: true, profileImageUrl: true }
                 },
-                _count: {
-                    select: { likes: true },
-                },
-                // Include likes relation only if user is logged in (internalUserId is not null)
-                ...(internalUserId && {
-                    likes: {
-                        where: { userId: internalUserId },
-                        select: { userId: true },
-                    },
-                }),
+                replies: { // Include nested replies
+                    include: {
+                        user: { select: { id: true, username: true, firstName: true, lastName: true, profileImageUrl: true } },
+                    }
+                }
             },
             orderBy: {
                 createdAt: 'desc',
@@ -77,6 +72,7 @@ export async function getCommentsForTrack(trackId: string): Promise<{ success: b
             ...restOfComment,
             _count: { likes: likeCount },
             currentUserHasLiked: currentUserLiked,
+            replies: [], // Add empty replies array to satisfy the type
           };
         }) as unknown as CommentWithDetails[];
 
@@ -88,57 +84,75 @@ export async function getCommentsForTrack(trackId: string): Promise<{ success: b
 }
 
 // --- Action: Add Comment (Updated) ---
-export async function addComment(input: { trackId: string; text: string; parentId?: string }): Promise<{ success: boolean; comment?: CommentWithDetails; error?: string }> {
+export async function addComment(input: { trackId: string; content: string; parentId?: string }): Promise<{ success: boolean; comment?: CommentWithDetails; error?: string }> {
     console.log("[addComment] Action started.");
     const user = await currentUser();
-    console.log("[addComment] Clerk currentUser() result:", user);
 
-    if (!user || !user.id) {
-        console.error("[addComment] No user or user.id found from currentUser().");
+    if (!user) {
         return { success: false, error: 'Authentication required.' };
     }
-    const clerkId = user.id;
-    console.log(`[addComment] Found clerkId via currentUser: ${clerkId}`);
+    
+    let internalUserId = await getInternalUserId(user.id);
 
-    const internalUserId = await getInternalUserId(clerkId);
+    // Just-in-time user creation
     if (!internalUserId) {
-        console.error(`[addComment] Failed to find internal user ID for clerkId: ${clerkId}`);
+        console.warn(`[addComment] User not found locally, creating new user for clerkId: ${user.id}`);
+        try {
+            const newUser = await prisma.user.create({
+                data: {
+                    clerkId: user.id,
+                    email: user.emailAddresses[0]?.emailAddress,
+                    username: user.username,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    profileImageUrl: user.imageUrl,
+                },
+            });
+            internalUserId = newUser.id;
+            console.log(`[addComment] Created new user with internal ID: ${internalUserId}`);
+        } catch (error) {
+            console.error('[addComment] Error creating new user:', error);
+            return { success: false, error: 'Failed to create user profile.' };
+        }
+    }
+
+    if (!internalUserId) {
+        console.error(`[addComment] Failed to find or create internal user ID for clerkId: ${user.id}`);
         return { success: false, error: 'User not found.' };
     }
-    console.log(`[addComment] Found internalUserId: ${internalUserId}`);
 
     const validation = addCommentSchema.safeParse(input);
     if (!validation.success) {
         return { success: false, error: validation.error.errors.map(e => e.message).join(', ') };
     }
 
-    const { trackId, text, parentId } = validation.data;
+    const { trackId, content, parentId } = validation.data;
     console.log(`[addComment] Input: trackId=${trackId}, parentId=${parentId}, userId=${internalUserId}`);
 
     try {
         const newCommentData = await prisma.comment.create({
             data: {
-                text,
+                content,
                 trackId,
                 userId: internalUserId,
                 parentId: parentId, // Include parentId if provided
             },
             include: {
                 user: { select: { id: true, username: true, firstName: true, lastName: true, profileImageUrl: true } },
-                _count: { select: { likes: true } }, // Include like count for the new comment
-            },
+            }
         });
 
         // Construct the CommentWithDetails shape for the response
         const newComment: CommentWithDetails = {
             ...newCommentData,
-             user: newCommentData.user, // Ensure user is correctly included
-             _count: { likes: newCommentData._count?.likes ?? 0 },
-            currentUserHasLiked: false,
+             user: newCommentData.user, 
+             _count: { likes: 0 }, // A new comment always has 0 likes
+            currentUserHasLiked: false, // User can't have liked their own new comment yet
+            replies: [], // Add empty replies array
         };
 
         console.log(`[addComment] Successfully created comment ID: ${newComment.id}`);
-        revalidatePath('/explore'); // Revalidate relevant paths
+        // revalidatePath('/explore'); // Revalidate relevant paths
 
         return { success: true, comment: newComment };
     } catch (error) {

@@ -12,7 +12,7 @@ import { formatPrice } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import { createCheckoutSession } from '@/lib/actions/checkoutActions';
+import { createCheckoutSession } from '@/server-actions/stripeActions';
 import { usePostHog } from 'posthog-js/react';
 // Import Dialog components for checkout if using the same embedded checkout as dropdown
 import {
@@ -72,12 +72,12 @@ export function CartClientContent() {
       source: 'cart_page' // Differentiate from dropdown checkout
     });
 
-    const licenseIds = items.map((item) => item.licenseId);
+    const itemsForCheckout = items.map((item) => ({ licenseId: item.licenseId }));
     try {
-      const result = await createCheckoutSession(licenseIds);
-      if (result?.error) {
+      const result = await createCheckoutSession({ items: itemsForCheckout });
+      if (!result.success) {
         toast.error(`Checkout failed: ${result.error}`);
-      } else if (result?.clientSecret) {
+      } else if (result.clientSecret) {
         setClientSecret(result.clientSecret);
         setShowCheckoutDialog(true);
       } else {

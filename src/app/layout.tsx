@@ -11,6 +11,7 @@ import { PersistentPlayer } from '@/components/player/persistent-player'; // Pla
 import { PostHogProvider } from '@/components/providers/PostHogProvider'; // Based on rules
 import { Toaster } from '@/components/ui/sonner'; // Import Toaster
 import { ThemeProvider } from '@/components/providers/theme-provider'; // Added ThemeProvider import
+import { SlideOutPanel } from '@/components/SlideOutPanel'; // Import the SlideOutPanel
 
 // Import styles of packages that you've installed.
 // All packages except `@mantine/hooks` require styles imports
@@ -81,6 +82,7 @@ export default function RootLayout({
 
                 {/* PersistentPlayer component */}
                 <PersistentPlayer />
+                <SlideOutPanel />
               </div>
               <Toaster 
                 position="top-right" 

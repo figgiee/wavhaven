@@ -1,24 +1,54 @@
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
-import { getTrackById } from '@/server-actions/tracks/trackQueries';
+import { getTrackBySlug } from '@/server-actions/tracks/trackQueries';
 import { LicenseSelectorWithCart } from '@/components/features/LicenseSelectorWithCart';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import TrackPlayerButton from '@/components/TrackPlayerButton';
+import { AddToPlaylistButton } from '@/components/features/AddToPlaylistButton';
+import { getUserPlaylists } from '@/server-actions/users/userQueries';
+import { getInternalUserId } from '@/lib/userUtils';
+import { auth } from '@clerk/nextjs/server';
+import { ReportTrackButton } from '@/components/features/ReportTrackButton';
+import { SimilarTracks } from '@/components/features/SimilarTracks';
+import { CommentsSection } from '@/components/features/CommentsSection';
+import { LikeButton } from '@/components/features/LikeButton';
+import { getLikeStatus, getLikeCount } from '@/server-actions/interactionActions';
 
 interface TrackDetailPageProps {
   params: Promise<{
-    trackId: string;
+    slug: string;
   }>;
 }
 
-export default async function TrackDetailPage(props: TrackDetailPageProps) {
-  const params = await props.params;
-  const trackId = params.trackId;
-  const track = await getTrackById(trackId);
+export default async function TrackDetailPage({ params }: TrackDetailPageProps) {
+  const { slug } = await params;
+  const track = await getTrackBySlug(slug);
 
   if (!track) {
     notFound();
+  }
+
+  const { userId: clerkId } = auth();
+  let userPlaylists: { id: string, name: string }[] = [];
+  let likeStatus = { isLiked: false, likeCount: 0 };
+
+  if (clerkId) {
+    const internalUserId = await getInternalUserId(clerkId);
+    if (internalUserId) {
+      userPlaylists = await getUserPlaylists(internalUserId);
+    }
+    // Get like status for authenticated user
+    const likeResult = await getLikeStatus(track.id, clerkId);
+    if (likeResult.success) {
+      likeStatus = { isLiked: likeResult.isLiked || false, likeCount: likeResult.likeCount || 0 };
+    }
+  } else {
+    // Get just the like count for non-authenticated users
+    const likeCountResult = await getLikeCount(track.id);
+    if (likeCountResult.success) {
+      likeStatus = { isLiked: false, likeCount: likeCountResult.likeCount || 0 };
+    }
   }
 
   const sellerName = track.producer?.username || 
@@ -81,8 +111,23 @@ export default async function TrackDetailPage(props: TrackDetailPageProps) {
           {/* Track Details Card */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-3xl md:text-4xl font-bold">{track.title}</CardTitle>
-              <CardDescription className="text-lg pt-1">By {sellerName}</CardDescription>
+              <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-3xl md:text-4xl font-bold">{track.title}</CardTitle>
+                    <CardDescription className="text-lg pt-1">By {sellerName}</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {clerkId && (
+                      <AddToPlaylistButton trackId={track.id} userPlaylists={userPlaylists} />
+                    )}
+                    <LikeButton
+                      trackId={track.id}
+                      initialIsLiked={likeStatus.isLiked}
+                      initialLikeCount={likeStatus.likeCount}
+                      size="lg"
+                    />
+                  </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
                {/* Basic Metadata */}
@@ -94,6 +139,12 @@ export default async function TrackDetailPage(props: TrackDetailPageProps) {
                {/* Description */}
                {track.description && (
                  <p className="text-base text-foreground/80">{track.description}</p>
+               )}
+               
+               {clerkId && (
+                 <div className="pt-4 border-t border-neutral-800">
+                    <ReportTrackButton trackId={track.id} />
+                 </div>
                )}
             </CardContent>
           </Card>
@@ -111,21 +162,18 @@ export default async function TrackDetailPage(props: TrackDetailPageProps) {
                  )}
             </CardContent>
           </Card>
+
+          {/* Similar Tracks Card */}
+          <SimilarTracks trackId={track.id} />
+
+          {/* Comments Section */}
+          <CommentsSection 
+            trackId={track.id} 
+            title="Comments & Discussion"
+            className="mt-6"
+          />
         </div>
       </div>
     </div>
   );
 }
-
-// Optional: Add generateMetadata function for SEO
-// export async function generateMetadata({ params }: TrackDetailPageProps): Promise<Metadata> {
-//   const track = await getTrackById(params.trackId);
-//   if (!track) {
-//     return { title: 'Track Not Found' };
-//   }
-//   return {
-//     title: `${track.title} by ${track.sellerProfile?.storeName ?? 'Unknown Artist'}`,
-//     description: track.description || `Listen to and purchase a license for ${track.title}`,
-//     // Add open graph tags etc.
-//   };
-// } 

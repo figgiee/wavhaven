@@ -3,52 +3,65 @@
 import React from 'react';
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input"; // For displaying current values
+import { Input } from "@/components/ui/input";
 
 const MIN_BPM = 60;
 const MAX_BPM = 180;
 const BPM_STEP = 1;
 
 interface BpmRangeFilterProps {
-  value: [number, number] | undefined; // [minBpm, maxBpm]
-  onChange: (value: [number, number] | undefined) => void;
+  value: [number, number];
+  onChange: (value: [number, number]) => void;
 }
 
 export function BpmRangeFilter({ value, onChange }: BpmRangeFilterProps) {
-  const currentRange = value ?? [MIN_BPM, MAX_BPM];
+  const handleSliderChange = (newRange: number[]) => {
+    onChange([newRange[0], newRange[1]]);
+  };
 
-  const handleSliderChange = (newRange: [number, number]) => {
-    // Check if the range is effectively the full range, then pass undefined
-    if (newRange[0] === MIN_BPM && newRange[1] === MAX_BPM) {
-      onChange(undefined);
-    } else {
+  const handleInputChange = (index: number, inputValue: string) => {
+    const newValue = parseInt(inputValue, 10);
+    if (!isNaN(newValue) && newValue >= MIN_BPM && newValue <= MAX_BPM) {
+      const newRange = [...value] as [number, number];
+      newRange[index] = newValue;
+      // Ensure min doesn't exceed max and vice-versa
+      if (index === 0 && newValue > newRange[1]) {
+        newRange[1] = newValue;
+      }
+      if (index === 1 && newValue < newRange[0]) {
+        newRange[0] = newValue;
+      }
       onChange(newRange);
     }
   };
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-between items-center">
-        <Label htmlFor="bpm-range-filter" className="text-sm font-medium text-muted-foreground">BPM Range</Label>
-        <span className="text-xs text-neutral-400">
-          {currentRange[0]} - {currentRange[1]} BPM
-        </span>
-      </div>
       <Slider
         id="bpm-range-filter"
         min={MIN_BPM}
         max={MAX_BPM}
         step={BPM_STEP}
-        value={currentRange} // Slider expects an array for two thumbs
+        value={value}
         onValueChange={handleSliderChange}
-        minStepsBetweenThumbs={1}
-        className="w-full [&>span:first-child]:h-1.5 [&>span:first-child]:bg-neutral-700 [&>span:first-child_.bg-primary]:bg-cyan-glow"
+        minStepsBetweenThumbs={5}
+        className="w-full [&>span:first-child]:h-1.5 [&>span:first-child]:bg-neutral-700 [&>span>span]:bg-cyan-glow [&>span>span]:h-3 [&>span>span]:w-3 [&>span>span]:border-2 [&>span>span]:border-neutral-900"
       />
-      {/* Optional: Input fields to show/set exact BPM values */}
-      {/* <div className="flex items-center gap-2">
-        <Input type="number" value={currentRange[0]} onChange={(e) => handleSliderChange([+e.target.value, currentRange[1]])} className="w-1/2 bg-neutral-800 border-neutral-700" />
-        <Input type="number" value={currentRange[1]} onChange={(e) => handleSliderChange([currentRange[0], +e.target.value])} className="w-1/2 bg-neutral-800 border-neutral-700" />
-      </div> */}
+      <div className="flex justify-between items-center gap-2">
+        <Input 
+          type="number" 
+          value={value[0]} 
+          onChange={(e) => handleInputChange(0, e.target.value)} 
+          className="h-8 text-xs text-center bg-neutral-800 border-neutral-700 focus:ring-cyan-glow focus:border-cyan-glow text-neutral-100" 
+        />
+        <span className="text-neutral-500 text-xs">to</span>
+        <Input 
+          type="number" 
+          value={value[1]} 
+          onChange={(e) => handleInputChange(1, e.target.value)} 
+          className="h-8 text-xs text-center bg-neutral-800 border-neutral-700 focus:ring-cyan-glow focus:border-cyan-glow text-neutral-100" 
+        />
+      </div>
     </div>
   );
 } 

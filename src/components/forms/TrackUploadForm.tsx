@@ -218,40 +218,104 @@ export function TrackUploadForm() {
     }
 
     setIsSubmitting(true);
-    setUploadProgress({ preview: 0, cover: 0 }); // Reset progress
+    setUploadProgress({ preview: 0, cover: 0 });
 
-    // --- Extract Files ---
-    const coverFile = data.coverImage[0];
-    const audioFile = data.audioFile[0];
+    const audioFile = data.audioFile?.[0];
+    const coverFile = data.coverImage?.[0]; // Cover is optional
 
-    let prepareResult;
+    if (!audioFile) {
+        toast.error("Audio file is missing.");
+        setIsSubmitting(false);
+        return;
+    }
+
+    let trackId: string | null = null; // To hold trackId for cleanup
+
     try {
       // --- 1. Prepare Upload ---
+      toast.info("Preparing your upload...");
       const preparePayload = {
-          title: data.title || audioFile.name.replace(/\.[^/.]+$/, ""),
-          description: data.description || null,
+          title: data.title,
+          description: data.description,
           bpm: data.bpm,
-          key: data.key || null,
-          tags: data.tags || null,
-          price: data.price,
+          key: data.key,
+          tags: data.tags,
+          genre: data.genre,
           contentType: data.contentType,
+          price: data.licenses[0]?.price ?? 0, // Use price from first license
           _previewFileName: audioFile.name,
-          _coverFileName: coverFile?.name,
+          _coverFileName: coverFile?.name ?? 'default-cover.png', // Provide a fallback name
       };
-      console.log("Calling prepareSingleTrackUpload with data:", preparePayload);
 
-      prepareResult = await prepareSingleTrackUpload(preparePayload);
+      const prepareResult = await prepareSingleTrackUpload(preparePayload);
 
-      // Check the structure of prepareResult returned by the server action
-      if (!prepareResult || prepareResult.error || !prepareResult.preparations) {
-        console.error("Prepare Error Details:", prepareResult?.errorDetails);
-        throw new Error(prepareResult?.error || "Failed to prepare upload. Invalid response from server.");
+      if (!prepareResult.success || !prepareResult.preparations) {
+        throw new Error(prepareResult.error || "Failed to prepare upload.");
+      }
+      
+      trackId = prepareResult.preparations.trackId; // Store trackId for potential cleanup
+      
+      const { previewUploadUrl, coverUploadUrl, previewStoragePath, coverStoragePath } = prepareResult.preparations;
+
+      // --- 2. Upload Files in Parallel ---
+      toast.info("Uploading files...");
+      const uploadPromises = [];
+      
+      // Audio file upload promise
+      uploadPromises.push(
+          uploadFileToSignedUrl(previewUploadUrl, audioFile, (progress) => {
+              setUploadProgress(prev => ({ ...prev, preview: progress }));
+          })
+      );
+      
+      // Cover file upload promise (if it exists)
+      if (coverFile && coverUploadUrl) {
+          uploadPromises.push(
+              uploadFileToSignedUrl(coverUploadUrl, coverFile, (progress) => {
+                  setUploadProgress(prev => ({ ...prev, cover: progress }));
+              })
+          );
+      }
+      
+      await Promise.all(uploadPromises);
+
+      // --- 3. Finalize Upload ---
+      toast.info("Finalizing track details...");
+      const finalizePayload = {
+          trackId: trackId,
+          previewUploaded: true,
+          coverUploaded: !!coverFile,
+          previewStoragePath: previewStoragePath,
+          coverStoragePath: coverStoragePath,
+          duration: 0, // TODO: Get audio duration from the file on the client before upload
+          bpm: data.bpm,
+          key: data.key,
+          tags: data.tags,
+          genre: data.genre,
+          mood: null, // Mood is not in the form yet
+      };
+
+      const finalizeResult = await finalizeSingleTrackUpload(finalizePayload);
+
+      if (!finalizeResult.success) {
+          throw new Error(finalizeResult.error || "Failed to finalize upload.");
       }
 
-      console.log("Prepare result:", prepareResult);
-      const { trackId, previewUploadUrl, coverUploadUrl, previewStoragePath, coverStoragePath } = prepareResult.preparations;
+      toast.success("Track uploaded and published successfully!");
+      router.push('/dashboard'); // Redirect to dashboard on success
+      
+    } catch (error: any) {
+        const errorMessage = error.message || "An unknown error occurred during upload.";
+        console.error("Upload process failed:", error);
+        toast.error("Upload Failed", { description: errorMessage });
 
-
+        // If an error occurred after preparation, cleanup is needed
+        if (trackId) {
+            console.log(`Error occurred, starting cleanup for trackId: ${trackId}`);
+            await cleanupFailedUpload(trackId);
+            toast.info("Cleanup successful. Please try uploading again.");
+        }
+    } finally {
       // --- 2. Upload Files Directly ---
       const uploadPromises = [];
       const fileStatuses: Record<string, boolean> = { preview: false, cover: false };

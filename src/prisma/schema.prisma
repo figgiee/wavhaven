@@ -1,0 +1,6 @@
+  playlists           PlaylistTrack[]
+  moderationReports   ModerationQueue[]
+  embedding           TrackEmbedding?
+
+  @@index([producerId])
+  @@index([title]) 

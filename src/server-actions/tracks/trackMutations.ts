@@ -204,10 +204,10 @@ export async function uploadTrack(formData: FormData): Promise<UploadResult> {
 			}
 		}
 
-		const mainTrack = formData.get("mainTrack") as File;
-		const coverImage = formData.get("coverImage") as File;
+		const mainTrackFile = formData.get("mainTrack") as File;
+		const coverImageFile = formData.get("coverImage") as File;
 
-		if (!mainTrack || !coverImage) {
+		if (!mainTrackFile || !coverImageFile) {
 			return {
 				success: false,
 				error: "Missing required files (main track and cover)",
@@ -237,6 +237,79 @@ export async function uploadTrack(formData: FormData): Promise<UploadResult> {
 		}
 		const validatedData = validationResult.data;
 
+		const uniqueSlug = await generateUniqueSlug(validatedData.title);
+
+		// 1. Upload Cover Image
+		const coverImageBuffer = Buffer.from(await coverImageFile.arrayBuffer());
+		const coverImageMimeType = coverImageFile.type;
+		const coverFileType =
+			coverImageMimeType === "image/png"
+				? TrackFileType.IMAGE_PNG
+				: coverImageMimeType === "image/jpeg"
+				? TrackFileType.IMAGE_JPEG
+				: TrackFileType.IMAGE_WEBP;
+		const coverFileName = `${uniqueSlug}-cover.${coverImageMimeType.split("/")[1]}`;
+		const coverStoragePath = `tracks/${uniqueSlug}/${coverFileName}`;
+		await supabaseAdmin.storage
+			.from("tracks")
+			.upload(coverStoragePath, coverImageBuffer, {
+				contentType: coverImageMimeType,
+				upsert: true,
+			});
+
+		// 2. Upload Main Track File (assuming WAV for now)
+		const mainTrackBuffer = Buffer.from(await mainTrackFile.arrayBuffer());
+		const mainTrackFileName = `${uniqueSlug}-main.wav`;
+		const mainTrackStoragePath = `tracks/${uniqueSlug}/${mainTrackFileName}`;
+		await supabaseAdmin.storage
+			.from("tracks")
+			.upload(mainTrackStoragePath, mainTrackBuffer, {
+				contentType: "audio/wav",
+				upsert: true,
+			});
+
+		// 3. Create Watermarked Preview
+		tempMainTrackPath = path.join(
+			os.tmpdir(),
+			`main_${uuidv4()}.${mainTrackFile.name.split(".").pop()}`,
+		);
+		await fs.writeFile(tempMainTrackPath, mainTrackBuffer);
+
+		tempWatermarkedPath = path.join(os.tmpdir(), `preview_${uuidv4()}.mp3`);
+
+		await new Promise<void>((resolve, reject) => {
+			ffmpeg(tempMainTrackPath)
+				.input(WATERMARK_FILE_PATH)
+				.complexFilter([
+					"[0:a]volume=1[a0]",
+					"[1:a]volume=0.1[a1]",
+					"[a0][a1]amix=inputs=2:duration=longest[a]",
+				])
+				.map("[a]")
+				.audioCodec("libmp3lame")
+				.audioBitrate(128)
+				.toFormat("mp3")
+				.on("error", (err) => {
+					console.error("FFmpeg Error:", err);
+					reject(new Error(`Failed to process audio: ${err.message}`));
+				})
+				.on("end", () => {
+					console.log("Watermarked preview created successfully.");
+					resolve();
+				})
+				.save(tempWatermarkedPath);
+		});
+
+		const previewBuffer = await fs.readFile(tempWatermarkedPath);
+		const previewFileName = `${uniqueSlug}-preview.mp3`;
+		const previewStoragePath = `tracks/${uniqueSlug}/${previewFileName}`;
+		await supabaseAdmin.storage
+			.from("tracks")
+			.upload(previewStoragePath, previewBuffer, {
+				contentType: "audio/mp3",
+				upsert: true,
+			});
+
 		const tagsList = validatedData.tags
 			? validatedData.tags
 					.split(",")
@@ -255,310 +328,84 @@ export async function uploadTrack(formData: FormData): Promise<UploadResult> {
 			preset: "PRESETS",
 			presets: "PRESETS",
 		};
-		const dbContentType = contentTypeMap[validatedData.contentType];
-		if (!dbContentType) {
-			throw new Error(
-				`Invalid content type provided: ${validatedData.contentType}`,
-			);
-		}
+		const contentTypeValue =
+			contentTypeMap[validatedData.contentType.toLowerCase()];
 
-		const uniqueSlug = await generateUniqueSlug(validatedData.title);
-
-		const timestamp = Date.now();
-		const filePrefix = `users/${internalUserId}/${dbContentType}/${timestamp}`;
-
-		const sanitizeFilename = (filename: string): string => {
-			const noSpaces = filename.replace(/\s+/g, "_");
-			const normalized = noSpaces
-				.normalize("NFD")
-				.replace(/[\u0300-\u036f]/g, "");
-			const sanitized = normalized.replace(/[^a-zA-Z0-9_\-\.]/g, "_");
-			return sanitized;
-		};
-
-		const sanitizedMainTrackName = sanitizeFilename(mainTrack.name);
-		const sanitizedCoverImageName = sanitizeFilename(coverImage.name);
-
-		const mainTrackPath = `${filePrefix}_main_${sanitizedMainTrackName}`;
-		const coverImagePath = `${filePrefix}_cover_${sanitizedCoverImageName}`;
-		const previewTrackPath = `${filePrefix}_preview.mp3`;
-		let coverImageUrl: string | null = null;
-		let previewAudioUrl: string | null = null;
-		let mainFileUrl: string | null = null;
-
-		try {
-			uploadedCoverPath = await uploadFile(coverImage, coverImagePath);
-			coverImageUrl = getPublicUrl(uploadedCoverPath);
-		} catch (uploadError: unknown) {
-			console.error("Cover image upload failed:", uploadError);
-			const errorMessage =
-				uploadError instanceof Error
-					? uploadError.message
-					: "Unknown upload error";
-			throw new Error(`Failed to upload cover image: ${errorMessage}`);
-		}
-
-		try {
-			uploadedMainTrackPath = await uploadFile(mainTrack, mainTrackPath);
-			mainFileUrl = getPublicUrl(uploadedMainTrackPath);
-		} catch (uploadError: unknown) {
-			console.error("Main track upload failed:", uploadError);
-			if (uploadedCoverPath) {
-				console.log(`Cleaning up cover image: ${uploadedCoverPath}`);
-				await deleteFile(uploadedCoverPath).catch((cleanupError) => {
-					console.error(
-						`Failed to cleanup cover image ${uploadedCoverPath}:`,
-						cleanupError,
-					);
-				});
-			}
-			const errorMessage =
-				uploadError instanceof Error
-					? uploadError.message
-					: "Unknown upload error";
-			throw new Error(`Failed to upload main track: ${errorMessage}`);
-		}
-
-		try {
-			console.log("Starting watermarking process...");
-			const tempDir = await fs.mkdtemp(
-				path.join(os.tmpdir(), "wavhaven-upload-"),
-			);
-			tempMainTrackPath = path.join(
-				tempDir,
-				`original_${sanitizedMainTrackName}`,
-			);
-			tempWatermarkedPath = path.join(tempDir, `watermarked_preview.mp3`);
-			console.log(
-				`Temp paths: Main=${tempMainTrackPath}, Watermarked=${tempWatermarkedPath}`,
-			);
-
-			const mainTrackBuffer = Buffer.from(await mainTrack.arrayBuffer());
-			await fs.writeFile(tempMainTrackPath, mainTrackBuffer);
-			console.log("Original track saved temporarily.");
-
-			try {
-				await fs.access(WATERMARK_FILE_PATH);
-				console.log("Watermark file found.");
-			} catch (watermarkError) {
-				console.error(
-					`Watermark file not found at ${WATERMARK_FILE_PATH}. Skipping watermarking.`,
-				);
-				console.log(
-					`Uploading original main track as preview to ${previewTrackPath}`,
-				);
-				uploadedPreviewPath = await uploadFile(mainTrack, previewTrackPath);
-				previewAudioUrl = getPublicUrl(uploadedPreviewPath);
-				console.log(`Original track used as preview. URL: ${previewAudioUrl}`);
-			}
-
-			if (!tempMainTrackPath || !tempWatermarkedPath) {
-				console.error("Temporary paths are null, cannot run ffmpeg.");
-				throw new Error("Failed to prepare temporary files for watermarking.");
-			}
-
-			if (previewAudioUrl === null) {
-				await new Promise<void>((resolve, reject) => {
-					console.log("Running ffmpeg command...");
-					ffmpeg()
-						.input(tempMainTrackPath as string)
-						.input(WATERMARK_FILE_PATH)
-						.complexFilter([
-							"[0:a]volume=1[a0]; [1:a]volume=0.17[a1]; [a0][a1]amix=inputs=2:duration=longest[aout]",
-						])
-						.map("[aout]")
-						.audioCodec("libmp3lame")
-						.audioBitrate("128k")
-						.outputOptions("-preset fast")
-						.on("start", (commandLine) =>
-							console.log("Spawned Ffmpeg with command: " + commandLine),
-						)
-						.on("error", (err, stdout, stderr) => {
-							console.error("ffmpeg Error:", err.message);
-							console.error("ffmpeg stdout:", stdout);
-							console.error("ffmpeg stderr:", stderr);
-							reject(new Error(`ffmpeg processing failed: ${err.message}`));
-						})
-						.on("end", () => {
-							console.log("ffmpeg processing finished successfully.");
-							resolve();
-						})
-						.save(tempWatermarkedPath as string);
-				});
-
-				console.log(`Uploading watermarked preview to ${previewTrackPath}`);
-				const watermarkedBuffer = await fs.readFile(
-					tempWatermarkedPath as string,
-				);
-				const watermarkedFile = new File(
-					[watermarkedBuffer],
-					path.basename(previewTrackPath),
-					{ type: "audio/mpeg" },
-				);
-
-				uploadedPreviewPath = await uploadFile(
-					watermarkedFile,
-					previewTrackPath,
-				);
-				previewAudioUrl = getPublicUrl(uploadedPreviewPath);
-				console.log(`Watermarked preview uploaded. URL: ${previewAudioUrl}`);
-			}
-		} catch (watermarkError: unknown) {
-			console.error("Watermarking or preview upload failed:", watermarkError);
-			if (uploadedMainTrackPath) {
-				await deleteFile(uploadedMainTrackPath).catch(console.error);
-			}
-			if (uploadedCoverPath) {
-				await deleteFile(uploadedCoverPath).catch(console.error);
-			}
-			const errorMessage =
-				watermarkError instanceof Error
-					? watermarkError.message
-					: "Unknown watermarking error";
-			throw new Error(`Failed to create preview audio: ${errorMessage}`);
-		} finally {
-			if (tempMainTrackPath) {
-				await fs.unlink(tempMainTrackPath).catch(console.error);
-			}
-			if (tempWatermarkedPath) {
-				await fs.unlink(tempWatermarkedPath).catch(console.error);
-			}
-			if (tempMainTrackPath?.startsWith(os.tmpdir())) {
-				await fs.rmdir(path.dirname(tempMainTrackPath)).catch(console.error);
-			}
-		}
-
-		let mainFileType: TrackFileType;
-		if (mainTrack.type === "audio/wav") {
-			mainFileType = TrackFileType.MAIN_WAV;
-		} else if (mainTrack.type === "audio/mpeg") {
-			mainFileType = TrackFileType.MAIN_MP3;
-		} else {
-			console.warn(
-				`Unsupported main track file type: ${mainTrack.type}. Defaulting to MAIN_MP3.`,
-			);
-			mainFileType = TrackFileType.MAIN_MP3;
-		}
-
-		let coverFileType: TrackFileType;
-		if (coverImage.type === "image/png") {
-			coverFileType = TrackFileType.IMAGE_PNG;
-		} else if (coverImage.type === "image/jpeg") {
-			coverFileType = TrackFileType.IMAGE_JPEG;
-		} else if (coverImage.type === "image/webp") {
-			coverFileType = TrackFileType.IMAGE_WEBP;
-		} else {
-			console.warn(
-				`Unsupported cover image file type: ${coverImage.type}. Defaulting to IMAGE_PNG.`,
-			);
-			coverFileType = TrackFileType.IMAGE_PNG;
-		}
-
-		const track = await prisma.track.create({
+		const newTrack = await prisma.track.create({
 			data: {
 				title: validatedData.title,
-				description: validatedData.description,
-				bpm: parseInt(validatedData.bpm),
-				key: validatedData.key,
 				slug: uniqueSlug,
-				producerId: internalUserId,
-				isPublished: false,
+				description: validatedData.description,
+				bpm: parseInt(validatedData.bpm, 10),
+				key: validatedData.key,
+				producer: { connect: { id: internalUserId } },
+				contentType: contentTypeValue,
+				minPrice: Math.min(...validatedData.licenses.map((l) => l.price)),
+				licenses: {
+					create: validatedData.licenses.map((l) => ({
+						name: l.name,
+						price: l.price,
+						type: LicenseType.BASIC, // Placeholder
+						filesIncluded: l.filesIncluded,
+						streamLimit: l.streamLimit,
+						distributionLimit: l.distributionLimit,
+					})),
+				},
+				trackFiles: {
+					create: [
+						{ fileType: coverFileType, storagePath: coverStoragePath },
+						{ fileType: TrackFileType.PREVIEW_MP3, storagePath: previewStoragePath },
+						{ fileType: TrackFileType.MAIN_WAV, storagePath: mainTrackStoragePath },
+					],
+				},
+				genres: genreName
+					? {
+							connectOrCreate: {
+								where: { name: genreName },
+								create: { name: genreName },
+							},
+					  }
+					: undefined,
 				tags: {
 					connectOrCreate: tagsList.map((tagName) => ({
 						where: { name: tagName },
 						create: { name: tagName },
 					})),
 				},
-				...(genreName && {
-					genres: {
-						connectOrCreate: {
-							where: { name: genreName },
-							create: { name: genreName },
-						},
-					},
-				}),
-				trackFiles: {
-					create: [
-						...(uploadedPreviewPath
-							? [
-									{
-										fileType: TrackFileType.PREVIEW_MP3,
-										storagePath: uploadedPreviewPath,
-									},
-								]
-							: []),
-						{
-							fileType: mainFileType,
-							storagePath: uploadedMainTrackPath,
-						},
-						{
-							fileType: coverFileType,
-							storagePath: uploadedCoverPath,
-						},
-					].filter(Boolean),
-				},
 			},
+			select: { id: true },
 		});
 
-		const licenseCreationPromises = validatedData.licenses.map((licenseData) =>
-			prisma.license.create({
-				data: {
-					trackId: track.id,
-					name: licenseData.name,
-					price: licenseData.price,
-					type: licenseData.name.toLowerCase().includes("exclusive")
-						? LicenseType.EXCLUSIVE
-						: LicenseType.BASIC,
-					filesIncluded: licenseData.filesIncluded,
-					streamLimit: licenseData.streamLimit,
-					distributionLimit: licenseData.distributionLimit,
-				},
-			}),
-		);
+		revalidatePath("/");
+		revalidatePath("/explore");
+		revalidatePath(`/u/${user.username}`);
 
-		await Promise.all(licenseCreationPromises);
-		console.log(
-			`Created ${validatedData.licenses.length} licenses for track ${track.id}`,
-		);
-
-		revalidatePath("/browse");
-		revalidatePath("/producer/dashboard");
-
-		return { success: true, trackId: track.id };
-	} catch (error) {
-		console.error("Upload error:", error);
-		try {
-			if (uploadedPreviewPath) {
-				await deleteFile(uploadedPreviewPath).catch(console.error);
-			}
-			if (uploadedMainTrackPath) {
-				await deleteFile(uploadedMainTrackPath).catch(console.error);
-			}
-			if (uploadedCoverPath) {
-				await deleteFile(uploadedCoverPath).catch(console.error);
-			}
-		} catch (cleanupError: unknown) {
-			console.error("Error during cleanup after upload failure:", cleanupError);
-		}
-		return {
-			success: false,
-			error: error instanceof Error ? error.message : "Failed to upload track",
-		};
+		return { success: true, trackId: newTrack.id };
+	} catch (error: unknown) {
+		console.error("Error uploading track:", error);
+		// Basic error handling, should be more specific
+		const errorMessage =
+			error instanceof Error ? error.message : "An unknown error occurred.";
+		return { success: false, error: errorMessage };
+	} finally {
+		// Cleanup temporary files
+		if (tempMainTrackPath) await fs.unlink(tempMainTrackPath).catch(console.error);
+		if (tempWatermarkedPath) await fs.unlink(tempWatermarkedPath).catch(console.error);
 	}
 }
 
 export async function deleteTrack(
 	trackId: string,
 ): Promise<{ success: boolean; error?: string }> {
-	const { userId: clerkUserId } = await auth();
-	if (!clerkUserId) {
-		return { success: false, error: "Authentication required." };
+	const { userId: clerkId } = auth();
+	if (!clerkId) {
+		return { success: false, error: "Not authenticated." };
 	}
 
 	try {
-		const producerId = await getInternalUserId(clerkUserId);
-		if (!producerId) {
-			throw new Error("Could not find internal user ID.");
+		const internalUserId = await getInternalUserId(clerkId);
+		if (!internalUserId) {
+			return { success: false, error: "User not found." };
 		}
 
 		const track = await prisma.track.findUnique({
@@ -578,68 +425,44 @@ export async function deleteTrack(
 			return { success: false, error: "Track not found." };
 		}
 
-		if (track.producerId !== producerId) {
+		const user = await prisma.user.findUnique({
+			where: { id: internalUserId },
+			select: { role: true },
+		});
+
+		if (track.producerId !== internalUserId && user?.role !== UserRole.ADMIN) {
 			return {
 				success: false,
-				error: "You do not have permission to delete this track.",
+				error: "You don't have permission to delete this track.",
 			};
 		}
 
-		const storagePathsToDelete: string[] = track.trackFiles
-			.map((file: { storagePath: string | null }) => file.storagePath)
-			.filter((path: string | null): path is string => !!path);
-
-		if (storagePathsToDelete.length > 0) {
-			console.log(
-				`Attempting to delete storage files for track ${trackId}:`,
-				storagePathsToDelete,
-			);
-			try {
-				const { error: deleteError } = await supabaseAdmin.storage
-					.from("wavhaven-tracks")
-					.remove(storagePathsToDelete);
-
-				if (deleteError) {
-					console.error(
-						`Storage delete error for track ${trackId}:`,
-						deleteError,
-					);
-					console.warn(
-						`Failed to delete storage files for track ${trackId}, but proceeding with database deletion.`,
-					);
-				} else {
-					console.log(
-						`Successfully deleted storage files for track ${trackId}`,
-					);
-				}
-			} catch (storageSetupError) {
-				console.error(
-					`Error initializing/using storage client for deletion (Track ID ${trackId}):`,
-					storageSetupError,
-				);
-				console.warn(
-					`Failed setup/use storage client for track ${trackId} deletion, but proceeding with database deletion.`,
-				);
+		// Delete associated files from storage
+		const filePaths = track.trackFiles.map((file) => file.storagePath);
+		if (filePaths.length > 0) {
+			const { error: storageError } = await supabaseAdmin.storage
+				.from("tracks")
+				.remove(filePaths);
+			if (storageError) {
+				console.error("Error deleting files from storage:", storageError);
+				// Decide if you want to stop or continue if storage deletion fails
+				return {
+					success: false,
+					error: `Failed to delete associated files: ${storageError.message}`,
+				};
 			}
-		} else {
-			console.log(`No storage files found to delete for track ${trackId}`);
 		}
 
-		await prisma.track.delete({
-			where: { id: trackId },
-		});
+		await prisma.track.delete({ where: { id: trackId } });
 
-		revalidatePath("/dashboard");
 		revalidatePath("/explore");
-		revalidatePath("/");
-
-		console.log(`Successfully deleted track ${trackId}`);
+		// Also revalidate user profile page if you have one
 		return { success: true };
 	} catch (error: unknown) {
-		const message =
-			error instanceof Error ? error.message : "An unexpected error occurred.";
-		console.error(`Error deleting track ${trackId}:`, error);
-		return { success: false, error: message };
+		console.error("Error deleting track:", error);
+		const errorMessage =
+			error instanceof Error ? error.message : "An unknown error occurred.";
+		return { success: false, error: errorMessage };
 	}
 }
 
@@ -737,7 +560,7 @@ export async function deleteMultipleTracks(
 		if (pathsToDelete.length > 0) {
 			try {
 				const { error: deleteError } = await supabaseAdmin.storage
-					.from("wavhaven-tracks")
+					.from("tracks")
 					.remove(pathsToDelete);
 				if (deleteError) {
 					console.error(`Storage bulk delete error:`, deleteError);
@@ -1095,5 +918,180 @@ export async function toggleTrackPublication(
 		const errorMessage =
 			error instanceof Error ? error.message : "An unexpected error occurred.";
 		return { success: false, error: errorMessage };
+	}
+}
+
+export async function deleteTrackFile(
+	trackId: string,
+	storagePath: string,
+): Promise<{ success: boolean; error?: string }> {
+	console.log(`Attempting to delete file with storage path: ${storagePath} from track ${trackId}`);
+
+	const { userId: clerkId } = auth();
+	if (!clerkId) {
+		return { success: false, error: 'User not authenticated.' };
+	}
+	const producerId = await getInternalUserId(clerkId);
+	if (!producerId) {
+		return { success: false, error: 'Could not verify user.' };
+	}
+
+	try {
+		// First, verify the user owns the track this file belongs to
+		const fileRecord = await prisma.trackFile.findFirst({
+			where: {
+				storagePath: storagePath,
+				trackId: trackId,
+				track: {
+					producerId: producerId,
+				},
+			},
+			select: { id: true },
+		});
+
+		if (!fileRecord) {
+			return { success: false, error: 'File not found or permission denied.' };
+		}
+
+		// Use a transaction to ensure both DB and storage are cleaned up
+		await prisma.$transaction(async (tx) => {
+			// Delete the file from Supabase Storage
+			const { error: storageError } = await supabaseAdmin.storage
+				.from('tracks') // Make sure this bucket name is correct
+				.remove([storagePath]);
+
+			if (storageError) {
+				// If storage deletion fails, we roll back the DB deletion
+				throw new Error(`Storage deletion failed: ${storageError.message}`);
+			}
+			console.log(`Successfully deleted file from storage: ${storagePath}`);
+
+			// Delete the TrackFile record from the database
+			await tx.trackFile.delete({
+				where: { id: fileRecord.id },
+			});
+			console.log(`Successfully deleted TrackFile record from database: ${fileRecord.id}`);
+		});
+
+		revalidatePath(`/track/${trackId}/edit`);
+
+		return { success: true };
+
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "An unexpected error occurred.";
+		console.error(`Error deleting track file ${storagePath}:`, error);
+		return { success: false, error: message };
+	}
+}
+
+export async function prepareTrackFileReplacement(
+	trackId: string,
+	fileType: TrackFileType,
+	fileName: string,
+): Promise<{ success: boolean; error?: string; uploadUrl?: string; storagePath?: string; }> {
+	'use server';
+
+	const { userId: clerkId } = auth();
+	if (!clerkId) {
+		return { success: false, error: 'User not authenticated.' };
+	}
+	const producerId = await getInternalUserId(clerkId);
+	if (!producerId) {
+		return { success: false, error: 'Could not verify user.' };
+	}
+
+	try {
+		const track = await prisma.track.findFirst({
+			where: { id: trackId, producerId: producerId },
+		});
+
+		if (!track) {
+			return { success: false, error: 'Track not found or permission denied.' };
+		}
+
+		// Construct a new storage path
+		const newStoragePath = `public/${producerId}/${trackId}/${fileType.toLowerCase()}-${uuidv4()}-${fileName}`;
+
+		const { urls, error } = await createSignedUploadUrls('tracks', [newStoragePath], 300);
+
+		if (error || !urls?.[0]) {
+			throw new Error(error || 'Failed to create signed URL.');
+		}
+
+		return {
+			success: true,
+			uploadUrl: urls[0],
+			storagePath: newStoragePath,
+		};
+
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "An unexpected error occurred.";
+		console.error(`Error preparing file replacement for track ${trackId}:`, error);
+		return { success: false, error: message };
+	}
+}
+
+export async function finalizeTrackFileReplacement(
+	trackId: string,
+	fileType: TrackFileType,
+	newStoragePath: string,
+): Promise<{ success: boolean; error?: string; }> {
+	'use server';
+	
+	const { userId: clerkId } = auth();
+	if (!clerkId) return { success: false, error: 'User not authenticated.' };
+	const producerId = await getInternalUserId(clerkId);
+	if (!producerId) return { success: false, error: 'Could not verify user.' };
+
+	try {
+		const trackFileToUpdate = await prisma.trackFile.findFirst({
+			where: {
+				trackId: trackId,
+				fileType: fileType,
+				track: { producerId: producerId },
+			},
+		});
+
+		if (!trackFileToUpdate) {
+			// If no record exists, create one
+			await prisma.trackFile.create({
+				data: {
+					trackId: trackId,
+					fileType: fileType,
+					storagePath: newStoragePath,
+				}
+			});
+			console.log(`Created new TrackFile record for ${fileType} on track ${trackId}`);
+		} else {
+			const oldStoragePath = trackFileToUpdate.storagePath;
+
+			// Update the DB record with the new path
+			await prisma.trackFile.update({
+				where: { id: trackFileToUpdate.id },
+				data: { storagePath: newStoragePath },
+			});
+			console.log(`Updated TrackFile record ${trackFileToUpdate.id} with new path ${newStoragePath}`);
+			
+			// Delete the old file from storage
+			if (oldStoragePath) {
+				await supabaseAdmin.storage.from('tracks').remove([oldStoragePath]);
+				console.log(`Deleted old file from storage: ${oldStoragePath}`);
+			}
+		}
+		
+		revalidatePath(`/track/${trackId}/edit`);
+		return { success: true };
+
+	} catch(error) {
+		const message = error instanceof Error ? error.message : "An unexpected error occurred.";
+		console.error(`Error finalizing file replacement for track ${trackId}:`, error);
+		
+		// As a fallback, try to delete the newly uploaded file if finalization fails
+		if (newStoragePath) {
+			await supabaseAdmin.storage.from('tracks').remove([newStoragePath]);
+			console.log(`Rolled back by deleting newly uploaded file: ${newStoragePath}`);
+		}
+		
+		return { success: false, error: message };
 	}
 } 

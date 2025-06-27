@@ -300,120 +300,83 @@ interface AccountLinkResult {
 
 export async function createStripeAccountLink(): Promise<AccountLinkResult> {
   try {
-    // 1. Authentication & Authorization
-    const { userId: clerkUserId } = await auth();
-    if (!clerkUserId) {
-      return { success: false, error: 'Authentication required.' };
+    const { userId: clerkId } = auth();
+    const user = await currentUser();
+
+    if (!clerkId || !user) {
+      return { success: false, error: "User not authenticated." };
     }
 
-    const internalUserId = await getInternalUserId(clerkUserId);
-    if (!internalUserId) {
-      return { success: false, error: 'User record not found.' };
-    }
-
-    // 2. Find User and SellerProfile, ensure user is/becomes a PRODUCER
-    const userWithProfile = await prisma.user.findUnique({
-      where: { id: internalUserId },
+    // Find the user and their potential seller profile in our database
+    const userProfile = await prisma.user.findUnique({
+      where: { clerkId },
       select: {
         id: true,
-        role: true,
         email: true,
         sellerProfile: {
-          select: { id: true, stripeAccountId: true },
-        },
-      },
+          select: { stripeAccountId: true }
+        }
+      }
     });
 
-    if (!userWithProfile) {
-      // Should not happen if getInternalUserId succeeded
-      return { success: false, error: 'User record inconsistency.' };
+    if (!userProfile) {
+      return { success: false, error: "User profile not found in database." };
     }
+    
+    let { sellerProfile } = userProfile;
+    let stripeAccountId: string | undefined | null = sellerProfile?.stripeAccountId;
 
-    let sellerProfile = userWithProfile.sellerProfile;
-    let stripeAccountId = sellerProfile?.stripeAccountId;
-
-    // If user is not yet a producer or has no seller profile, create/update them
-    if (userWithProfile.role !== UserRole.PRODUCER || !sellerProfile) {
-      console.log(`User ${internalUserId} is not a producer or lacks profile. Updating...`);
-      await prisma.$transaction(async (tx) => {
-        // Ensure role is PRODUCER
-        if (userWithProfile.role !== UserRole.PRODUCER) {
-          await tx.user.update({
-            where: { id: internalUserId },
-            data: { role: UserRole.PRODUCER },
-          });
-          console.log(`Updated user ${internalUserId} role to PRODUCER.`);
-        }
-        // Create SellerProfile if it doesn't exist
-        if (!sellerProfile) {
-          const newProfile = await tx.sellerProfile.create({
-            data: { userId: internalUserId },
-            select: { id: true, stripeAccountId: true }, // Select stripeAccountId which will be null
-          });
-          sellerProfile = newProfile; // Update local variable
-          stripeAccountId = newProfile.stripeAccountId; // Update local variable (will be null)
-          console.log(`Created SellerProfile ${newProfile.id} for user ${internalUserId}.`);
-        }
-      });
-      // Re-fetch sellerProfile ID if it was just created
-      if (!sellerProfile) {
-         const refetchedProfile = await prisma.sellerProfile.findUnique({ where: { userId: internalUserId }, select: { id: true, stripeAccountId: true }});
-         sellerProfile = refetchedProfile;
-         stripeAccountId = refetchedProfile?.stripeAccountId;
-      }
-    }
-
-    // Ensure we have a seller profile ID after potential creation
-    if (!sellerProfile?.id) {
-       return { success: false, error: 'Failed to create or find seller profile.' };
-    }
-
-    // 3. Create Stripe Account if needed
+    // 1. Create a Stripe account if one doesn't exist
     if (!stripeAccountId) {
-      console.log(`No Stripe account found for SellerProfile ${sellerProfile.id}. Creating...`);
+      console.log(`No Stripe account found for user ${userProfile.id}. Creating one.`);
       const account = await stripe.accounts.create({
         type: 'express',
-        email: userWithProfile.email, // Pre-fill email if available
+        email: userProfile.email,
         capabilities: {
           card_payments: { requested: true },
           transfers: { requested: true },
         },
-        // Add business_profile, country, etc. if needed
       });
-
       stripeAccountId = account.id;
 
-      // Store the new Stripe Account ID on the SellerProfile
-      await prisma.sellerProfile.update({
-        where: { id: sellerProfile.id },
-        data: { stripeAccountId: stripeAccountId },
+      // Create a seller profile and link it to the user and stripe account
+      sellerProfile = await prisma.sellerProfile.create({
+        data: {
+          userId: userProfile.id,
+          stripeAccountId: stripeAccountId,
+          stripeAccountReady: false,
+        }
       });
-      console.log(`Created Stripe account ${stripeAccountId} and linked to SellerProfile ${sellerProfile.id}.`);
+      console.log(`Created Stripe account ${stripeAccountId} and SellerProfile for user ${userProfile.id}.`);
+    } else {
+       console.log(`Using existing Stripe account ${stripeAccountId} for user ${userProfile.id}.`);
     }
 
-    // 4. Create Account Link
-    console.log(`Creating account link for Stripe account ${stripeAccountId}.`);
-    // Define your return and refresh URLs
-    const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/producer/dashboard?stripe_return=true`; // Redirect back to dashboard
-    const refreshUrl = `${process.env.NEXT_PUBLIC_APP_URL}/producer/dashboard?stripe_refresh=true`; // Handle refresh case
+    // 2. Create the account link
+    const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`;
+    const refreshUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/onboarding-refresh`; // A page to handle refresh
 
     const accountLink = await stripe.accountLinks.create({
       account: stripeAccountId,
       refresh_url: refreshUrl,
       return_url: returnUrl,
       type: 'account_onboarding',
-      collect: 'eventually_due',
     });
+    
+    if (!accountLink.url) {
+        console.error("Stripe failed to return an account link URL.", { accountId: stripeAccountId });
+        return { success: false, error: 'Could not create onboarding link.' };
+    }
 
-    // 5. Return URL
+    console.log(`Successfully created Stripe account link for account ${stripeAccountId}.`);
     return { success: true, url: accountLink.url };
 
-  } catch (error: unknown) {
+  } catch (error) {
     console.error("Error creating Stripe account link:", error);
-    const message = error instanceof Error ? error.message : "An unexpected error occurred.";
-    return { success: false, error: message };
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+    return { success: false, error: `Stripe connection failed: ${errorMessage}` };
   }
-} 
+}
 
 // --- Get Stripe Balance Action ---
 
@@ -643,3 +606,30 @@ export async function verifyCheckoutSession(sessionId: string | null): Promise<V
   }
 }
 // ----------------------------------------- 
+
+interface LoginLinkResult {
+  success: boolean;
+  url?: string;
+  error?: string;
+}
+
+export async function createStripeLoginLink(stripeAccountId: string): Promise<LoginLinkResult> {
+  if (!stripeAccountId) {
+    return { success: false, error: "Stripe Account ID is missing." };
+  }
+
+  try {
+     const loginLink = await stripe.accounts.createLoginLink(stripeAccountId);
+     return { success: true, url: loginLink.url };
+  } catch (error) {
+    console.error(`Error creating Stripe login link for account ${stripeAccountId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+    return { success: false, error: `Could not create login link: ${errorMessage}` };
+  }
+}
+
+// -----------------------------
+//       BALANCE & PAYOUTS      
+// -----------------------------
+// ... existing code ...
+// ... existing code ... 

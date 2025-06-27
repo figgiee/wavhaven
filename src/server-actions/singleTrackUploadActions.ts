@@ -248,197 +248,124 @@ export async function finalizeSingleTrackUpload(
     'use server';
     console.log("--- Inside finalizeSingleTrackUpload (Prisma) ---");
     console.log("[finalizeSingleTrackUpload] Received input:", input);
-    
-    // 1. Validate Input
+
     const validation = finalizeInputSchema.safeParse(input);
     if (!validation.success) {
-        console.error("Finalize Single Validation Error:", validation.error.flatten());
-        return { success: false, error: 'Invalid finalization data.' };
+        console.error("Finalize Validation Error:", validation.error.flatten());
+        return { success: false, error: 'Invalid input for finalizing upload.' };
     }
-    const finalizeData = validation.data;
+    const { 
+        trackId, 
+        previewUploaded, 
+        coverUploaded, 
+        previewStoragePath, 
+        coverStoragePath,
+        duration,
+        tags,
+        // other metadata fields...
+    } = validation.data;
 
-    // 2. Authenticate User (Check ownership)
-    const authData = await auth();
-    const clerkUserId = authData?.userId;
-    if (!clerkUserId) {
-        return { success: false, error: 'User not authenticated.' };
-    }
-    let producerId: string | null = null;
-    try {
-        producerId = await getInternalUserId(clerkUserId);
-    } catch (error: unknown) { 
-        const msg = error instanceof Error ? error.message : 'User lookup failed';
-        console.error("Error getting producer ID in finalize:", error);
-        return { success: false, error: msg };
-    }
-
+    // Authenticate user to ensure they own the track
+    const { userId: clerkUserId } = await auth();
+    const producerId = clerkUserId ? await getInternalUserId(clerkUserId) : null;
     if (!producerId) {
-        return { success: false, error: 'Failed to resolve user ID.' };
-    }
-
-    // --- Ensure Seller Profile Exists ---
-    try {
-        console.log(`[finalize] Checking/ensuring SellerProfile for User ID: ${producerId}`);
-        const user = await prisma.user.findUnique({
-            where: { id: producerId },
-            select: { role: true, sellerProfile: { select: { id: true } } }
-        });
-
-        if (!user) {
-            // Should be impossible if producerId was resolved, but defensive check
-            throw new Error('User record not found after resolving ID.');
-        }
-
-        if (!user.sellerProfile) {
-            console.log(`[finalize] SellerProfile not found for user ${producerId}. Creating profile and updating role...`);
-            // Use a transaction to ensure atomicity
-            await prisma.$transaction([
-                prisma.user.update({ 
-                    where: { id: producerId }, 
-                    data: { role: 'PRODUCER' } // Use direct enum value if possible, else string
-                }),
-                prisma.sellerProfile.create({
-                    data: { 
-                        userId: producerId, 
-                        // Add default required fields for SellerProfile here if any
-                    }
-                })
-            ]);
-            console.log(`[finalize] Successfully created SellerProfile and updated role for user ${producerId}.`);
-        } else {
-            console.log(`[finalize] SellerProfile already exists for user ${producerId}.`);
-            // Optionally ensure role is PRODUCER even if profile exists
-            if (user.role !== 'PRODUCER') { // Use direct enum value if possible
-                console.log(`[finalize] User role is ${user.role}, updating to PRODUCER...`);
-                await prisma.user.update({ where: { id: producerId }, data: { role: 'PRODUCER' } });
-            }
-        }
-    } catch (profileError) {
-        console.error(`[finalize] Error ensuring SellerProfile for user ${producerId}:`, profileError);
-        const message = profileError instanceof Error ? profileError.message : 'Failed to ensure seller profile.';
-        return { success: false, error: message };
-    }
-    // --- Seller Profile Ensured ---
-
-    // 3. Verify Upload Status & Existence (Basic checks)
-    if (!finalizeData.previewUploaded || !finalizeData.coverUploaded) {
-        console.warn(`Finalization warning for track ${finalizeData.trackId}: Client reported incomplete uploads.`);
+        return { success: false, error: 'User not authenticated or not found.' };
     }
     
+    // Check if both files were reported as uploaded by the client
+    if (!previewUploaded || !coverUploaded) {
+        console.error(`Client reported failed upload for track ${trackId}. Triggering cleanup.`);
+        await cleanupFailedUpload(trackId);
+        return { success: false, error: 'Upload was not completed successfully. Cleanup has been performed.' };
+    }
+
     try {
-        // 4. Find Track and verify ownership
-        const track = await prisma.track.findUnique({
+        const track = await prisma.track.findFirst({
             where: {
-                id: finalizeData.trackId,
-                producerId: producerId, // *** Authorization Check ***
+                id: trackId,
+                producerId: producerId
             },
-            select: { id: true, tags: true, genres: true, moods: true } // Select existing relations
         });
 
         if (!track) {
-            console.error(`Track not found or user ${producerId} does not own track ${finalizeData.trackId}`);
-            return { success: false, error: 'Track not found or permission denied.' };
+            return { success: false, error: 'Track not found or you do not have permission to edit it.' };
         }
 
-        // 5. Use Prisma Transaction for atomic updates
+        // --- Use a transaction to ensure atomicity ---
         await prisma.$transaction(async (tx) => {
-            console.log(`[finalize] Starting transaction for track ${track.id}`);
-
-            // 5a. Create TrackFile records
-            // Create MAIN TrackFile (MP3 or WAV based on original filename? For now, assume MP3 if previewUploaded)
-            // TODO: Determine FileType more reliably (e.g., from MIME type passed from client)
-            const mainFileType = finalizeData.previewStoragePath.toLowerCase().endsWith('.wav') 
-                                 ? TrackFileType.MAIN_WAV 
-                                 : TrackFileType.MAIN_MP3; 
-            const mainAudioFile = await tx.trackFile.create({
-                data: {
-                    trackId: track.id,
-                    fileType: mainFileType, // Use determined type
-                    storagePath: finalizeData.previewStoragePath, // Path of the main audio file
+            // 1. Create TrackFile records for the uploaded files
+            const filesToCreate = [
+                {
+                    trackId: trackId,
+                    fileType: TrackFileType.PREVIEW_MP3,
+                    storagePath: previewStoragePath,
+                    // url: will be generated on read, not stored
                 },
-                 select: { id: true }
-            });
-            console.log(`[finalize] Created main audio TrackFile (${mainFileType}): ${mainAudioFile.id}`);
-
-            // Create Cover Image TrackFile
-            // TODO: Determine FileType more reliably
-            const imageFileType = finalizeData.coverStoragePath.toLowerCase().endsWith('.png') 
-                                ? TrackFileType.IMAGE_PNG
-                                : finalizeData.coverStoragePath.toLowerCase().endsWith('.webp') 
-                                ? TrackFileType.IMAGE_WEBP
-                                : TrackFileType.IMAGE_JPEG; // Default to JPEG
-            const coverFile = await tx.trackFile.create({
-                data: {
-                    trackId: track.id,
-                    fileType: imageFileType, // Use determined type
-                    storagePath: finalizeData.coverStoragePath,
-                },
-                 select: { id: true }
-            });
-            console.log(`[finalize] Created cover TrackFile (${imageFileType}): ${coverFile.id}`);
-
-            // 5b. Update Track with Metadata (No FKs needed anymore)
-            // Connect Genre/Mood (requires finding/creating them first)
-            let genreConnect: Prisma.GenreWhereUniqueInput | undefined;
-            if (finalizeData.genre) {
-                const genre = await tx.genre.upsert({
-                    where: { name: finalizeData.genre },
-                    update: {}, // No update needed if found
-                    create: { name: finalizeData.genre },
-                    select: { id: true }
-                });
-                if(genre) genreConnect = { id: genre.id };
-            }
-            let moodConnect: Prisma.MoodWhereUniqueInput | undefined;
-            if (finalizeData.mood) {
-                const mood = await tx.mood.upsert({
-                    where: { name: finalizeData.mood },
-                    update: {}, // No update needed if found
-                    create: { name: finalizeData.mood },
-                    select: { id: true }
-                });
-                if(mood) moodConnect = { id: mood.id };
-            }
-            
-            // Handle Tags (Connect/Create)
-            const tagNames = finalizeData.tags?.split(',').map(t => t.trim()).filter(Boolean) ?? [];
-            const tagConnectOrCreateOps = tagNames.map(tagName => ({
-                 where: { name: tagName },
-                 create: { name: tagName },
-             }));
-
-            console.log(`[finalize] Updating track ${track.id} with metadata...`);
-            await tx.track.update({
-                where: { id: track.id },
-                data: {
-                    bpm: finalizeData.bpm,
-                    key: finalizeData.key,
-                    isPublished: true, // Mark as published upon finalization
-                    genres: genreConnect 
-                        ? { connectOrCreate: { where: { id: genreConnect.id }, create: { name: finalizeData.genre! } } } 
-                        : undefined,
-                    mood: moodConnect 
-                        ? { connectOrCreate: { where: { id: moodConnect.id }, create: { name: finalizeData.mood! } } } 
-                        : undefined,
-                    tags: {
-                        connectOrCreate: tagConnectOrCreateOps,
-                        // Optional: disconnect tags not in the new list if needed
-                        // set: tagConnectOrCreateOps // Alternative: replaces all tags
-                    }
+                {
+                    trackId: trackId,
+                    fileType: TrackFileType.ARTWORK,
+                    storagePath: coverStoragePath,
+                    // url: will be generated on read, not stored
                 }
+            ];
+            await tx.trackFile.createMany({ data: filesToCreate });
+            console.log(`[finalize] Created TrackFile records for track ${trackId}`);
+
+            // 2. Get public URL for the cover art to store on the track
+            const { publicUrl: artworkPublicUrl, error: urlError } = getPublicUrl(BUCKET_NAME, coverStoragePath);
+            if (urlError) {
+                // Throwing an error here will cause the transaction to roll back
+                throw new Error(`Failed to get public URL for cover art: ${urlError}`);
+            }
+
+            // 3. Create or find Tag records and prepare for connection
+            const tagConnectOrCreate = [];
+            if (tags) {
+                const tagNames = tags.split(',').map(t => t.trim()).filter(Boolean);
+                for (const name of tagNames) {
+                    tagConnectOrCreate.push({
+                        where: { name: name.toLowerCase() },
+                        create: { name: name.toLowerCase(), slug: name.toLowerCase().replace(/\s+/g, '-') }
+                    });
+                }
+            }
+
+            // 4. Update the Track record with final details
+            await tx.track.update({
+                where: { id: trackId },
+                data: {
+                    isPublished: true, // Publish the track
+                    duration: duration,
+                    artworkUrl: artworkPublicUrl,
+                    // Connect tags
+                    tags: {
+                        connectOrCreate: tagConnectOrCreate
+                    },
+                    // Update other metadata if needed from input
+                    bpm: input.bpm,
+                    key: input.key,
+                    genre: input.genre,
+                    mood: input.mood,
+                },
             });
-            console.log(`[finalize] Updated track ${track.id} successfully.`);
+            console.log(`[finalize] Published and updated metadata for track ${trackId}`);
+        });
+        
+        // --- Revalidation ---
+        revalidatePath('/explore');
+        revalidatePath(`/track/${track.slug}`); // Revalidate specific track page
+        revalidatePath('/dashboard'); // Revalidate producer dashboard
 
-        }); // --- End Transaction ---
-
-        console.log(`Successfully finalized upload for track ${finalizeData.trackId}`);
+        console.log(`Finalization complete for track ${trackId}.`);
         return { success: true };
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'An unexpected error occurred during finalization.';
-        console.error(`Error finalizing track ${finalizeData.trackId}:`, error);
-        // If the transaction failed, DB state should be rolled back.
-        // If the error occurred before the transaction, no DB changes were made.
+        console.error(`Error finalizing upload for track ${trackId}:`, error);
+        
+        // If finalization fails, we should clean up.
+        await cleanupFailedUpload(trackId);
+        
         return { success: false, error: message };
     }
 }
@@ -454,66 +381,78 @@ export async function finalizeSingleTrackUpload(
  */
 export async function cleanupFailedUpload(trackId: string): Promise<{ success: boolean; error?: string }> {
     'use server';
-    console.log(`[cleanupFailedUpload] Initiating cleanup for track ID: ${trackId}`);
+    console.log(`--- Starting cleanup for failed upload: Track ID ${trackId} ---`);
 
     if (!trackId) {
-        console.error("[cleanupFailedUpload] No track ID provided.");
-        return { success: false, error: "Track ID is required for cleanup." };
+        return { success: false, error: 'Invalid Track ID for cleanup.' };
     }
 
     try {
-        // Find the track and its associated files
-        const trackToDelete = await prisma.track.findUnique({
-            where: { id: trackId },
+        // Authenticate user to ensure they own the track they're trying to clean up
+        const { userId: clerkUserId } = await auth();
+        const producerId = clerkUserId ? await getInternalUserId(clerkUserId) : null;
+        if (!producerId) {
+            return { success: false, error: 'User not authenticated for cleanup.' };
+        }
+
+        // Fetch the track and its associated files to get storage paths
+        const trackWithFiles = await prisma.track.findFirst({
+            where: {
+                id: trackId,
+                producerId: producerId, // Security check
+            },
             select: {
                 id: true,
-                trackFiles: { // Select associated file records
-                    select: { storagePath: true }
-                }
-            }
+                files: {
+                    select: {
+                        storagePath: true,
+                    },
+                },
+            },
         });
 
-        if (!trackToDelete) {
-            console.warn(`[cleanupFailedUpload] Track ID ${trackId} not found in database. Assuming already cleaned up or never created properly.`);
-            return { success: true }; // Nothing to delete
+        // If track doesn't exist or isn't owned by the user, we can consider it "cleaned"
+        if (!trackWithFiles) {
+            console.log(`Cleanup not needed or not permitted for track ${trackId}. It may already be deleted.`);
+            return { success: true };
         }
 
-        // Collect storage paths to delete
-        const storagePathsToDelete = trackToDelete.trackFiles
-            .map(file => file.storagePath)
-            .filter((path): path is string => !!path); // Filter out null/undefined paths
+        const storagePaths = trackWithFiles.files.map(file => file.storagePath).filter(Boolean);
 
-        // Delete storage files if any exist
-        if (storagePathsToDelete.length > 0) {
-            console.log(`[cleanupFailedUpload] Attempting to delete ${storagePathsToDelete.length} storage files for track ${trackId}:`, storagePathsToDelete);
-            try {
-                const { error: deleteError } = await supabaseAdmin.storage
-                    .from('wavhaven-tracks') // Use your bucket name
-                    .remove(storagePathsToDelete);
-
-                if (deleteError) {
-                    console.error(`[cleanupFailedUpload] Storage deletion error for track ${trackId}:`, deleteError);
-                    // Log error but proceed to delete DB record anyway
-                } else {
-                    console.log(`[cleanupFailedUpload] Successfully deleted storage files for track ${trackId}.`);
-                }
-            } catch (storageClientError) {
-                console.error(`[cleanupFailedUpload] Error initializing/using storage client for deletion (Track ID ${trackId}):`, storageClientError);
-                 // Log error but proceed to delete DB record anyway
-            }
-        }
-
-        // Delete the track record from the database (Prisma handles cascading deletes for TrackFile)
-        await prisma.track.delete({
-            where: { id: trackId }
+        // Use a transaction to delete DB records
+        await prisma.$transaction(async (tx) => {
+            // Deleting the track will cascade to licenses, trackfiles, etc.
+            // based on the Prisma schema `onDelete: Cascade` settings.
+            await tx.track.delete({
+                where: { id: trackId },
+            });
+            console.log(`[cleanup] Successfully deleted track record ${trackId} from database.`);
         });
+        
+        // After DB records are gone, attempt to delete files from storage
+        if (storagePaths.length > 0) {
+            console.log(`[cleanup] Deleting associated files from storage for track ${trackId}:`, storagePaths);
+            const { data, error } = await supabaseAdmin.storage
+                .from(BUCKET_NAME)
+                .remove(storagePaths);
 
-        console.log(`[cleanupFailedUpload] Successfully deleted track record ${trackId} from database.`);
+            if (error) {
+                // Log the error but don't fail the whole operation,
+                // as the DB record is the most important part.
+                console.error(`[cleanup] Storage cleanup error for track ${trackId}:`, error.message);
+                // Optionally, you could flag this for manual review
+            } else {
+                console.log(`[cleanup] Successfully removed ${data?.length || 0} files from storage.`);
+            }
+        } else {
+             console.log(`[cleanup] No storage files were associated with track ${trackId} in the database.`);
+        }
+
         return { success: true };
 
     } catch (error) {
-        console.error(`[cleanupFailedUpload] Error during cleanup for track ${trackId}:`, error);
-        const message = error instanceof Error ? error.message : "An unexpected error occurred during cleanup.";
+        const message = error instanceof Error ? error.message : 'An unexpected error occurred during cleanup.';
+        console.error(`Error during cleanup for track ${trackId}:`, error);
         return { success: false, error: message };
     }
 }

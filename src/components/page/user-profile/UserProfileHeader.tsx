@@ -15,6 +15,7 @@ import {
   Linkedin, // Maybe replace with TikTok?
   Link as LinkIcon, // Generic link
 } from 'lucide-react';
+import { FollowButton } from '@/components/features/FollowButton';
 
 // Helper component for social links
 interface SocialLinkProps {
@@ -48,9 +49,16 @@ const SocialLink: React.FC<SocialLinkProps> = ({ href, icon: Icon, label }) => {
 interface UserProfileHeaderProps {
   userProfile: UserProfileHeaderData;
   className?: string;
+  isFollowing?: boolean;
+  currentUserId?: string;
 }
 
-export const UserProfileHeader: React.FC<UserProfileHeaderProps> = ({ userProfile, className }) => {
+export const UserProfileHeader: React.FC<UserProfileHeaderProps> = ({ 
+  userProfile, 
+  className, 
+  isFollowing = false, 
+  currentUserId 
+}) => {
   const fallbackInitials = `${userProfile.firstName?.charAt(0) ?? ''}${userProfile.lastName?.charAt(0) ?? ''}` || 'U';
   const displayName = userProfile.firstName || userProfile.lastName ? `${userProfile.firstName} ${userProfile.lastName}`.trim() : userProfile.username;
   const sellerProfile = userProfile.sellerProfile; // Alias for easier access
@@ -122,7 +130,14 @@ export const UserProfileHeader: React.FC<UserProfileHeaderProps> = ({ userProfil
           <SocialLink href={sellerProfile?.tiktokUrl} icon={LinkIcon} label="TikTok" />
         </div>
         
-        {/* TODO: Add Follow Button / Stats / etc. later */}
+        <div className="mt-4">
+          {currentUserId && currentUserId !== userProfile.id && (
+            <FollowButton
+              targetUserId={userProfile.id}
+              isInitiallyFollowing={isFollowing}
+            />
+          )}
+        </div>
       </div>
     </section>
   );

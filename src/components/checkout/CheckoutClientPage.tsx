@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from 'lucide-react';
-import { createCheckoutSession } from '@/lib/actions/checkoutActions';
+import { createCheckoutSession } from '@/server-actions/stripeActions';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -117,12 +117,12 @@ export function CheckoutClientPage() {
     // TODO: Future - Call a separate action here to save 'values' (billing info) if needed.
 
     // Call the existing action to create the Stripe session
-    const licenseIds = items.map((item) => item.licenseId);
+    const itemsForCheckout = items.map((item) => ({ licenseId: item.licenseId }));
     try {
-      const result = await createCheckoutSession(licenseIds);
-      if (result?.error) {
+      const result = await createCheckoutSession({ items: itemsForCheckout });
+      if (!result.success) {
         toast.error(`Checkout failed: ${result.error}`);
-      } else if (result?.clientSecret) {
+      } else if (result.clientSecret) {
         setClientSecret(result.clientSecret);
         setShowCheckoutDialog(true);
       } else {

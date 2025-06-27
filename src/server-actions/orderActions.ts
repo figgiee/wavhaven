@@ -87,20 +87,23 @@ export async function generateDownloadUrl(
       return { success: false, error: 'Track file not found.' };
     }
 
-    // Check if the user has an order item for any license of this track
-    const purchaseRecord = await prisma.orderItem.findFirst({
+    // Check if a UserDownloadPermission record exists for this user and track.
+    // This is the correct and efficient way to verify access.
+    const permission = await prisma.userDownloadPermission.findFirst({
       where: {
-        trackId: trackFile.trackId, // Match the trackId on OrderItem
-        order: {                     // Access the related Order record
-          customerId: internalUserId, // Corrected: Filter by customerId on the related Order
-          status: 'COMPLETED',       // Filter by status on the related Order
-        },
+        userId: internalUserId,
+        trackId: trackFile.trackId,
+        // Optionally, you could add a check on the order status if needed,
+        // but the existence of the permission should imply a completed order.
+        order: {
+          status: 'COMPLETED'
+        }
       },
-      select: { id: true }, // Just need to know if it exists
+      select: { id: true }, // We only need to know if the record exists.
     });
 
-    if (!purchaseRecord) {
-      return { success: false, error: 'Purchase not found or order not completed.' };
+    if (!permission) {
+      return { success: false, error: 'You do not have permission to download this file. Please purchase a license.' };
     }
 
     // 4. Generate Signed URL (Purchase verified)

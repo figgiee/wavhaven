@@ -3,10 +3,10 @@
 import { Search, LayoutGrid, List, ChevronDown, Loader2, AlertCircle, ListFilter, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FilterSidebar } from '@/components/explore/filter-sidebar';
-import { ActiveFilters } from '@/components/explore/active-filters';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -30,6 +30,7 @@ import { TrackGrid } from "@/components/explore/TrackGrid";
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { useExploreFilters } from '@/hooks/useExploreFilters';
 import { useTrackSearch } from '@/hooks/useTrackSearch';
+import { useUIStore } from '@/stores/use-ui-store';
 import type { SortOrder, LayoutMode } from '@/hooks/useExploreFilters';
 
 // --- Constants ---
@@ -67,6 +68,9 @@ export const ExploreClientUI: React.FC<ExploreClientUIProps> = ({ serverSearchPa
     handleClearSearch,
     getActiveFilterItems,
   } = useExploreFilters();
+
+  // UI store for filter panel state
+  const { isFilterPanelOpen, openFilterPanel, closeFilterPanel } = useUIStore();
 
   const {
     displayedBeats,
@@ -133,16 +137,50 @@ export const ExploreClientUI: React.FC<ExploreClientUIProps> = ({ serverSearchPa
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 min-h-screen">
-      {/* Desktop Filter Sidebar */}
-      <div className="hidden lg:block lg:w-80 flex-shrink-0">
-        <FilterSidebar onFiltersApplied={handleSidebarFiltersApplied} />
-      </div>
+    <div className="min-h-screen">      
+      {/* Main Layout with Sidebar */}
+      <div className="flex">
+        {/* Filter Sidebar - Static positioned */}
+        {isFilterPanelOpen && (
+          <motion.div
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: '320px', opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ 
+              type: 'spring',
+              stiffness: 300,
+              damping: 30,
+              duration: 0.4
+            }}
+            className="flex-shrink-0 bg-neutral-900 border-r border-neutral-700 overflow-hidden"
+          >
+            <div className="w-80 h-full">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-neutral-700">
+                <h2 className="text-xl font-semibold text-white">Filters</h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={closeFilterPanel}
+                  className="text-neutral-400 hover:text-white hover:bg-neutral-800"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
 
-      {/* Main Content Area */}
-      <div className={cn(
-          "flex-1 min-w-0",
-      )}>
+              {/* Filter Content */}
+              <div className="h-[calc(100vh-120px)] overflow-hidden">
+                <FilterSidebar 
+                  onFiltersApplied={handleSidebarFiltersApplied}
+                  isOverlay={false}
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
+        
+        {/* Main Content Area */}
+        <div className="flex-1 min-w-0 p-6">
         <div className="mb-6 space-y-4">
           <div className="relative">
             <VisuallyHidden>
@@ -170,43 +208,58 @@ export const ExploreClientUI: React.FC<ExploreClientUIProps> = ({ serverSearchPa
             )}
           </div>
           
-          {/* Mobile Filter Button & Active Filters */}
-          <div className="flex flex-wrap items-center gap-3">
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="outline" className="lg:hidden flex items-center gap-2 bg-neutral-800 border-neutral-700 hover:bg-neutral-700">
-                  <ListFilter className="w-4 h-4" />
-                  Filters
-                  {activeFilterItems.length > 0 && (
-                    <span className="ml-1 bg-cyan-glow text-black text-xs px-1.5 py-0.5 rounded-full font-medium">
-                      {activeFilterItems.length}
-                    </span>
-                  )}
+          {/* Active Filters */}
+          {activeFilterItems.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-neutral-400 mr-1">Active:</span>
+                {activeFilterItems.map((item) => (
+                  <Badge
+                    key={item.id}
+                    variant="secondary"
+                    className="flex items-center gap-1.5 pl-2 pr-0.5 py-0.5 text-xs font-normal bg-cyan-glow/15 text-cyan-glow hover:bg-cyan-glow/25 border border-cyan-glow/30 shadow-sm transition-colors cursor-default"
+                  >
+                    {item.label}: {item.value}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveFilter(item.id)}
+                      className="h-4 w-4 p-0 rounded-full text-cyan-glow/70 hover:text-cyan-glow hover:bg-cyan-glow/20 transition-all"
+                      aria-label={`Remove filter: ${item.label}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </Badge>
+                ))}
+                <Button 
+                  variant="link" 
+                  onClick={handleClearAllFilters} 
+                  className="text-xs text-magenta-spark hover:text-magenta-spark/80 h-auto p-0 ml-2"
+                >
+                  Clear All
                 </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-80 p-0">
-                <SheetHeader className="p-6 border-b border-neutral-700">
-                  <SheetTitle>Filters</SheetTitle>
-                </SheetHeader>
-                <div className="p-6">
-                  <FilterSidebar onFiltersApplied={handleSidebarFiltersApplied} />
-                </div>
-              </SheetContent>
-            </Sheet>
+              </div>
+            </div>
+          )}
 
-            {/* Active Filters */}
-            {activeFilterItems.length > 0 && (
-              <ActiveFilters 
-                filters={activeFilterItems} 
-                onRemoveFilter={handleRemoveFilter} 
-                onClearAll={handleClearAllFilters}
-              />
-            )}
-          </div>
-
-          {/* Controls Row: Sort & Layout */}
+          {/* Controls Row: Filter, Sort & Layout */}
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
+              {/* Filter Button */}
+              <Button 
+                variant="outline" 
+                onClick={openFilterPanel}
+                className="flex items-center gap-2 bg-neutral-800 border-neutral-700 hover:bg-neutral-700"
+              >
+                <ListFilter className="w-4 h-4" />
+                Filters
+                {activeFilterItems.length > 0 && (
+                  <span className="ml-1 bg-cyan-glow text-black text-xs px-1.5 py-0.5 rounded-full font-medium">
+                    {activeFilterItems.length}
+                  </span>
+                )}
+              </Button>
+
               <span className="text-sm text-neutral-400">
                 {currentTotalCount} track{currentTotalCount !== 1 ? 's' : ''}
               </span>
@@ -347,6 +400,7 @@ export const ExploreClientUI: React.FC<ExploreClientUIProps> = ({ serverSearchPa
             </Pagination>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

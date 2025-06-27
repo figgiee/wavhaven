@@ -136,8 +136,8 @@ export interface Beat {
     initialIsLiked: boolean; // For like button state
     genre: string; // Ensure non-null with fallback
     tempo: number; // BPM, ensure non-null with fallback
-    moods: string[]; // Array of mood names
-    tags: string[]; // Array of tag names
+    moods: { id: string; name: string }[];
+    tags: { id: string; name: string }[];
     isForSale: boolean;
     licenses: Array<{
       id: string;

@@ -29,10 +29,11 @@ export const TrackCardDetail: React.FC<TrackCardDetailProps> = ({
     isFavorited,
     isCurrentTrackPlaying,
     isThisTrackLoading,
+    isLikePending,
     producerProfileUrl,
     handlePlayPauseClick,
     handleLikeClick,
-  } = useTrackCardActions({ beat, fullTrackList, index });
+  } = useTrackCardActions({ beat, fullTrackList, index, isInitiallyLiked: beat.isLiked ?? false });
 
   const imageToDisplay = beat.imageUrl || beat.coverImageUrl;
 
@@ -101,7 +102,8 @@ export const TrackCardDetail: React.FC<TrackCardDetailProps> = ({
         <Button 
           variant="ghost" 
           size="icon" 
-          onClick={handleLikeClick} 
+          onClick={handleLikeClick}
+          disabled={isLikePending}
           aria-label={isFavorited ? "Unlike track" : "Like track"}
           className="text-muted-foreground hover:text-pink-500 data-[favorited=true]:text-pink-500"
           data-favorited={isFavorited}

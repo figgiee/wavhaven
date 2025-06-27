@@ -20,7 +20,7 @@ import { useRouter } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { createCheckoutSession } from '@/lib/actions/checkoutActions';
+import { createCheckoutSession } from '@/server-actions/stripeActions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
@@ -78,16 +78,16 @@ export default function CartDropdown() {
     setIsLoading(true);
     posthogClient?.capture('checkout_started', { itemCount: items.length, totalAmount: total });
 
-    const licenseIds = items.map((item) => item.licenseId);
-    console.log('[handleCheckout] Calling createCheckoutSession Server Action with items:', licenseIds);
+    const itemsForCheckout = items.map((item) => ({ licenseId: item.licenseId }));
+    console.log('[handleCheckout] Calling createCheckoutSession Server Action with items:', itemsForCheckout);
 
     try {
-      const result = await createCheckoutSession(licenseIds);
+      const result = await createCheckoutSession({ items: itemsForCheckout });
 
-      if (result?.error) {
+      if (!result.success) {
           console.error('[handleCheckout] Server Action returned explicit error:', result.error);
           toast.error(`Checkout failed: ${result.error}`);
-      } else if (result?.clientSecret) {
+      } else if (result.clientSecret) {
           console.log('[handleCheckout] Received clientSecret. Opening embedded checkout.');
           setClientSecret(result.clientSecret);
           setShowCheckoutDialog(true);

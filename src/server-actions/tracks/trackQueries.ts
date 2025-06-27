@@ -1,6 +1,6 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@clerk/nextjs/server";
 import prisma from "@/lib/db/prisma";
 import { getInternalUserId } from "@/lib/userUtils";
 import { createSignedUrl, getPublicUrl } from "@/lib/storage";
@@ -48,6 +48,7 @@ export type TrackSearchResult = {
 		description: string | null;
 		filesIncluded: TrackFileType[];
 		price: number;
+		isLiked?: boolean;
 	}[];
 };
 
@@ -145,6 +146,7 @@ const allowedContentTypes = [
 const allowedSortBy = [
 	"relevance",
 	"newest",
+	"popularity",
 	"price_asc",
 	"price_desc",
 ] as const;
@@ -276,14 +278,9 @@ async function shapeTrackDataForDetails(
 export async function searchTracks(input: SearchInput): Promise<SearchResult> {
 	const validationResult = searchTracksSchema.safeParse(input);
 	if (!validationResult.success) {
-		console.error(
-			"Search input validation failed:",
-			validationResult.error.errors,
-		);
+		console.error("Search validation failed:", validationResult.error.flatten());
 		return { tracks: [], totalCount: 0 };
 	}
-	const validatedInput = validationResult.data;
-
 	const {
 		query,
 		type,
@@ -296,49 +293,36 @@ export async function searchTracks(input: SearchInput): Promise<SearchResult> {
 		minPrice,
 		maxPrice,
 		sortBy,
-		page = 1,
-		limit = 12,
-	} = validatedInput;
+		page,
+		limit,
+	} = validationResult.data;
 
-	const where: Prisma.TrackWhereInput = {
-		isPublished: true,
-	};
+	const { userId: clerkId } = currentUser();
+	let internalUserId: string | null = null;
+	if (clerkId) {
+		internalUserId = await getInternalUserId(clerkId).catch(() => null);
+	}
+
+	const where: Prisma.TrackWhereInput = {};
+	const orderBy: Prisma.TrackOrderByWithRelationInput[] = [];
 
 	if (query) {
+		const producerIds = await getUserIdsByUsername(query);
 		where.OR = [
 			{ title: { contains: query, mode: "insensitive" } },
 			{ description: { contains: query, mode: "insensitive" } },
+			{ producerId: { in: producerIds } },
 			{ tags: { some: { name: { contains: query, mode: "insensitive" } } } },
 		];
 	}
 
-	if (type) {
-		const normalizedType = type.toUpperCase().replace(/S$/, "");
-		if (normalizedType === "BEAT") {
-			where.contentType = "BEATS";
-		}
-	}
+	if (type) where.contentType = { equals: type as any };
+	if (genre) where.genres = { some: { name: { equals: genre } } };
+	if (mood) where.moods = { some: { name: { equals: mood } } };
+	if (key) where.key = { equals: key };
+	if (minBpm) where.bpm = { ...where.bpm, gte: minBpm };
+	if (maxBpm) where.bpm = { ...where.bpm, lte: maxBpm };
 
-	if (genre) {
-		where.genres = { some: { name: { equals: genre, mode: "insensitive" } } };
-	}
-	if (mood) {
-		where.moods = { some: { name: { equals: mood, mode: "insensitive" } } };
-	}
-	if (minBpm !== undefined || maxBpm !== undefined) {
-		where.bpm = {};
-		if (minBpm !== undefined) where.bpm.gte = minBpm;
-		if (maxBpm !== undefined) where.bpm.lte = maxBpm;
-	}
-	if (key) {
-		where.key = { equals: key, mode: "insensitive" };
-	}
-	if (tags) {
-		const tagList = tags.split(",").map((t) => t.trim()).filter(Boolean);
-		if (tagList.length > 0) {
-			where.tags = { some: { name: { in: tagList, mode: "insensitive" } } };
-		}
-	}
 	if (minPrice !== undefined || maxPrice !== undefined) {
 		where.licenses = {
 			some: {
@@ -350,17 +334,21 @@ export async function searchTracks(input: SearchInput): Promise<SearchResult> {
 		};
 	}
 
-	let orderBy: Prisma.TrackOrderByWithRelationInput | Prisma.TrackOrderByWithRelationInput[] = {};
 	switch (sortBy) {
-		case "newest":
-			orderBy = { createdAt: "desc" };
+		case 'newest':
+			orderBy.push({ createdAt: 'desc' });
 			break;
-		case "price_asc":
-		case "price_desc":
-			orderBy = { createdAt: "desc" };
+		case 'popularity':
+			orderBy.push({ playCount: 'desc' });
 			break;
+		case 'price_asc':
+			orderBy.push({ minPrice: 'asc' });
+			break;
+		case 'price_desc':
+			orderBy.push({ minPrice: 'desc' });
+			break;
+		case 'relevance':
 		default:
-			orderBy = { createdAt: "desc" };
 			break;
 	}
 
@@ -382,19 +370,22 @@ export async function searchTracks(input: SearchInput): Promise<SearchResult> {
 					orderBy: { price: "asc" },
 				},
 				trackFiles: { select: { storagePath: true, fileType: true } },
+				likes: internalUserId ? { where: { userId: internalUserId }, select: { id: true } } : undefined,
 			},
 		});
 
 		const resultsWithUrls: TrackSearchResult[] = tracksData.map((track) => {
 			const previewAudioPath = track.trackFiles?.find((f) => f.fileType === "PREVIEW_MP3")?.storagePath;
+			const fallbackAudioPath = !previewAudioPath ? track.trackFiles?.find((f) => f.fileType === "MAIN_MP3")?.storagePath : null;
 			const coverPath = track.trackFiles?.find((f) => ["IMAGE_PNG", "IMAGE_JPEG", "IMAGE_WEBP"].includes(f.fileType))?.storagePath;
 
 			return {
 				...track,
 				producer: track.producer,
 				licenses: track.licenses.map((l) => ({ ...l, price: Number(l.price) })),
-				previewAudioUrl: previewAudioPath ? getPublicUrl(previewAudioPath) : null,
+				previewAudioUrl: previewAudioPath ? getPublicUrl(previewAudioPath) : (fallbackAudioPath ? getPublicUrl(fallbackAudioPath) : null),
 				coverImageUrl: coverPath ? getPublicUrl(coverPath) : null,
+				isLiked: !!track.likes?.length,
 			};
 		});
 
@@ -544,10 +535,11 @@ export async function getSimilarTracks({ trackId, producerName, limit = 4 }: Get
 }
 
 export async function getBeatDetails(trackId: string): Promise<FullTrackDetails | null> {
-	const { userId: clerkUserId } = auth();
+	const user = await currentUser();
+	const clerkId = user?.id;
 	let internalUserId: string | null = null;
-	if (clerkUserId) {
-		internalUserId = await getInternalUserId(clerkUserId).catch(() => null);
+	if (clerkId) {
+		internalUserId = await getInternalUserId(clerkId).catch(() => null);
 	}
 
 	if (!trackId) notFound();
@@ -589,7 +581,7 @@ export async function getBeatDetails(trackId: string): Promise<FullTrackDetails 
 }
 
 export async function getTrackForEdit(trackId: string): Promise<TrackForEdit | null> {
-	const { userId: clerkUserId } = auth();
+	const { userId: clerkUserId } = currentUser();
 	if (!clerkUserId) throw new Error("Authentication required.");
 
 	const internalUserId = await getInternalUserId(clerkUserId);
@@ -646,12 +638,14 @@ export async function getFeaturedTracks(limit: number = 6): Promise<TrackSearchR
 
 		const resultsWithUrls: TrackSearchResult[] = tracksData.map((track) => {
 			const previewAudioPath = track.trackFiles?.find((f) => f.fileType === "PREVIEW_MP3")?.storagePath;
+			const fallbackAudioPath = !previewAudioPath ? track.trackFiles?.find((f) => f.fileType === "MAIN_MP3")?.storagePath : null;
 			const coverPath = track.trackFiles?.find((f) => ["IMAGE_PNG", "IMAGE_JPEG", "IMAGE_WEBP"].includes(f.fileType))?.storagePath;
+
 			return {
 				...track,
 				producer: track.producer,
 				licenses: track.licenses.map((l) => ({ ...l, price: Number(l.price) })),
-				previewAudioUrl: previewAudioPath ? getPublicUrl(previewAudioPath) : null,
+				previewAudioUrl: previewAudioPath ? getPublicUrl(previewAudioPath) : (fallbackAudioPath ? getPublicUrl(fallbackAudioPath) : null),
 				coverImageUrl: coverPath ? getPublicUrl(coverPath) : null,
 			};
 		});

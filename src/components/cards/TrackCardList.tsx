@@ -32,6 +32,7 @@ export const TrackCardList: React.FC<TrackCardListProps> = ({
     isOptimisticallyInCart,
     isCurrentTrackPlaying,
     isThisTrackLoading,
+    isLikePending,
     cheapestLicense,
     licenseInCart,
     availableLicenses,
@@ -40,7 +41,7 @@ export const TrackCardList: React.FC<TrackCardListProps> = ({
     handleLikeClick,
     handleAddToCartFromCard,
     handleCardClick,
-  } = useTrackCardActions({ beat, fullTrackList, index });
+  } = useTrackCardActions({ beat, fullTrackList, index, isInitiallyLiked: beat.isLiked ?? false });
 
   const imageToDisplay = beat.imageUrl || beat.coverImageUrl;
 
@@ -135,6 +136,7 @@ export const TrackCardList: React.FC<TrackCardListProps> = ({
               isFavorited && "text-pink-500"
             )}
             onClick={handleLikeClick}
+            disabled={isLikePending}
             aria-label={isFavorited ? `Unlike ${beat.title}` : `Like ${beat.title}`}
           >
             <Heart size={16} fill={isFavorited ? 'currentColor' : 'none'} />

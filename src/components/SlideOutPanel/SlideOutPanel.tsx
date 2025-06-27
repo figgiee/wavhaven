@@ -62,14 +62,14 @@ const adaptBeatData = (details: FullTrackDetails): AdaptedBeatData => {
          packageDiscountAvailable: details.packageDiscountAvailable ?? false,
          url: details.url || `/track/${details.slug || details.id}`, // Construct URL
         // Set likes/comments to 0 since _count is removed from the query
-        likes: 0, // details._count?.likes ?? 0,
-        commentCount: 0, // details._count?.comments ?? 0,
+        likes: details._count?.likes ?? 0,
+        commentCount: details._count?.comments ?? 0,
         initialIsLiked: details.currentUserHasLiked ?? false,
         // Extract genre/moods/tags safely
         genre: /* details.genres?.[0]?.name ?? */ 'Unknown', // Adjust based on how Genre/Mood/Tag are structured
          tempo: details.bpm ?? 0,
-         moods: details.moods?.map(mood => mood.name) ?? [], // Map moods to their names
-         tags: details.tags?.map(tag => tag.name) ?? [], // Map tags to their names
+         moods: details.moods?.map(mood => ({ id: mood.id, name: mood.name })) ?? [],
+         tags: details.tags?.map(tag => ({ id: tag.id, name: tag.name })) ?? [],
         // isForSale might depend on whether licenses exist and have prices > 0
         isForSale: !!details.licenses?.some(l => parsePrice(l.price) > 0),
         licenses: (details.licenses ?? []).map((lic) => ({
@@ -242,7 +242,7 @@ export const SlideOutPanel: React.FC<SlideOutPanelProps> = ({ width = 'w-full sm
                 ref={overlayRef}
                 data-testid="slideout-overlay" // Added data-testid
                 className={cn(
-                    "fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ease-in-out",
+                    "fixed inset-0 bg-black/50 z-[999] transition-opacity duration-300 ease-in-out",
                     isSlideOutOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 )}
                 onClick={handleOverlayClick}
@@ -254,7 +254,7 @@ export const SlideOutPanel: React.FC<SlideOutPanelProps> = ({ width = 'w-full sm
                 ref={panelRef}
                 data-testid="slideout-panel-container" // Added data-testid
                 className={cn(
-                    "fixed top-0 right-0 h-full bg-background shadow-xl z-50",
+                    "fixed top-0 right-0 h-full bg-background shadow-xl z-[1000]",
                     "transition-transform duration-300 ease-in-out",
                     width, // Apply dynamic width
                     isSlideOutOpen ? 'transform translate-x-0' : 'transform translate-x-full'
